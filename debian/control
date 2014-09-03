@@ -5,7 +5,7 @@ Maintainer: Utopia Maintenance Team <pkg-utopia-maintainers@lists.alioth.debian.
 Uploaders: Michael Biebl <biebl@debian.org>, Mathieu Trudel-Lapierre <mathieu-tl@ubuntu.com>
 Build-Depends: debhelper (>= 9),
                dh-autoreconf,
-               dh-systemd,
+               dh-systemd (>= 1.8),
                automake,
                libtool,
                intltool,
