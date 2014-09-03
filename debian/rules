@@ -25,7 +25,8 @@ override_dh_auto_configure:
 	dh_auto_configure -- \
 		--enable-gtk-doc \
 		--with-polkit=strict \
-		--with-systemdsystemunitdir=/lib/systemd/system
+		--with-systemdsystemunitdir=/lib/systemd/system \
+		--enable-vala=no
 
 override_dh_makeshlibs:
 	dh_makeshlibs -X/usr/lib/$(DEB_HOST_MULTIARCH)/ModemManager/
