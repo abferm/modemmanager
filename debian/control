@@ -19,8 +19,7 @@ Build-Depends: debhelper (>= 9),
                libqmi-glib-dev (>= 1.8),
                libmbim-glib-dev (>= 1.4),
                libglib2.0-doc,
-	       valac (>= 0.22),
-	       policykit-1
+	       valac (>= 0.22)
 Standards-Version: 3.9.5
 Vcs-Git: git://anonscm.debian.org/collab-maint/modemmanager.git
 Vcs-Browser: http://anonscm.debian.org/gitweb/?p=collab-maint/modemmanager.git
@@ -30,6 +29,7 @@ Package: modemmanager
 Architecture: any
 Depends: ${shlibs:Depends},
          ${misc:Depends},
+	 policykit-1
 Recommends: usb-modeswitch
 Breaks: network-manager (<< 0.9.8.2-1)
 Description: D-Bus service for managing modems
