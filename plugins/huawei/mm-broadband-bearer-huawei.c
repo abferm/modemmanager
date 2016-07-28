@@ -42,37 +42,62 @@ struct _MMBroadbandBearerHuaweiPrivate {
 };
 
 /*****************************************************************************/
+
+static MMPortSerialAt *
+get_dial_port (MMBroadbandModemHuawei *modem,
+               MMPort                 *data,
+               MMPortSerialAt         *primary)
+{
+    MMPortSerialAt *dial_port;
+
+    /* See if we have a cdc-wdm AT port for the interface */
+    dial_port = (mm_broadband_modem_huawei_peek_port_at_for_data (
+                     MM_BROADBAND_MODEM_HUAWEI (modem), data));
+    if (dial_port)
+        return g_object_ref (dial_port);
+
+    /* Otherwise, fallback to using the primary port for dialing */
+    return g_object_ref (primary);
+}
+
+/*****************************************************************************/
 /* Connect 3GPP */
 
 typedef enum {
     CONNECT_3GPP_CONTEXT_STEP_FIRST = 0,
     CONNECT_3GPP_CONTEXT_STEP_NDISDUP,
     CONNECT_3GPP_CONTEXT_STEP_NDISSTATQRY,
+    CONNECT_3GPP_CONTEXT_STEP_IP_CONFIG,
     CONNECT_3GPP_CONTEXT_STEP_LAST
 } Connect3gppContextStep;
 
 typedef struct {
     MMBroadbandBearerHuawei *self;
     MMBaseModem *modem;
-    MMAtSerialPort *primary;
+    MMPortSerialAt *primary;
     MMPort *data;
     GCancellable *cancellable;
     GSimpleAsyncResult *result;
     Connect3gppContextStep step;
     guint check_count;
     guint failed_ndisstatqry_count;
+    MMBearerIpConfig *ipv4_config;
 } Connect3gppContext;
 
 static void
 connect_3gpp_context_complete_and_free (Connect3gppContext *ctx)
 {
     g_simple_async_result_complete_in_idle (ctx->result);
+
     g_object_unref (ctx->cancellable);
     g_object_unref (ctx->result);
-    g_object_unref (ctx->data);
-    g_object_unref (ctx->primary);
     g_object_unref (ctx->modem);
     g_object_unref (ctx->self);
+
+    g_clear_object (&ctx->ipv4_config);
+    g_clear_object (&ctx->data);
+    g_clear_object (&ctx->primary);
+
     g_slice_free (Connect3gppContext, ctx);
 }
 
@@ -89,6 +114,88 @@ connect_3gpp_finish (MMBroadbandBearer *self,
 
 static void connect_3gpp_context_step (Connect3gppContext *ctx);
 
+static void
+connect_dhcp_check_ready (MMBaseModem *modem,
+                          GAsyncResult *res,
+                          MMBroadbandBearerHuawei *self)
+{
+    Connect3gppContext *ctx;
+    const gchar *response;
+    GError *error = NULL;
+
+    ctx = self->priv->connect_pending;
+    g_assert (ctx != NULL);
+
+    /* Balance refcount */
+    g_object_unref (self);
+
+    /* Default to automatic/DHCP addressing */
+    ctx->ipv4_config = mm_bearer_ip_config_new ();
+    mm_bearer_ip_config_set_method (ctx->ipv4_config, MM_BEARER_IP_METHOD_DHCP);
+
+    /* Cache IPv4 details if available, otherwise clients will have to use DHCP */
+    response = mm_base_modem_at_command_full_finish (modem, res, &error);
+    if (response) {
+        guint address = 0;
+        guint prefix = 0;
+        guint gateway = 0;
+        guint dns1 = 0;
+        guint dns2 = 0;
+
+        if (mm_huawei_parse_dhcp_response (response,
+                                           &address,
+                                           &prefix,
+                                           &gateway,
+                                           &dns1,
+                                           &dns2,
+                                           &error)) {
+            GInetAddress *addr;
+            gchar *strarr[3] = { NULL, NULL, NULL };
+            guint n = 0;
+            gchar *str;
+
+            mm_bearer_ip_config_set_method (ctx->ipv4_config, MM_BEARER_IP_METHOD_STATIC);
+
+            addr = g_inet_address_new_from_bytes ((guint8 *)&address, G_SOCKET_FAMILY_IPV4);
+            str = g_inet_address_to_string (addr);
+            mm_bearer_ip_config_set_address (ctx->ipv4_config, str);
+            g_free (str);
+            g_object_unref (addr);
+
+            /* Netmask */
+            mm_bearer_ip_config_set_prefix (ctx->ipv4_config, prefix);
+
+            /* Gateway */
+            addr = g_inet_address_new_from_bytes ((guint8 *)&gateway, G_SOCKET_FAMILY_IPV4);
+            str = g_inet_address_to_string (addr);
+            mm_bearer_ip_config_set_gateway (ctx->ipv4_config, str);
+            g_free (str);
+            g_object_unref (addr);
+
+            /* DNS */
+            if (dns1) {
+                addr = g_inet_address_new_from_bytes ((guint8 *)&dns1, G_SOCKET_FAMILY_IPV4);
+                strarr[n++] = g_inet_address_to_string (addr);
+                g_object_unref (addr);
+            }
+            if (dns2) {
+                addr = g_inet_address_new_from_bytes ((guint8 *)&dns2, G_SOCKET_FAMILY_IPV4);
+                strarr[n++] = g_inet_address_to_string (addr);
+                g_object_unref (addr);
+            }
+            mm_bearer_ip_config_set_dns (ctx->ipv4_config, (const gchar **)strarr);
+            g_free (strarr[0]);
+            g_free (strarr[1]);
+        } else {
+            mm_dbg ("Unexpected response to ^DHCP command: %s", error->message);
+        }
+    }
+
+    g_clear_error (&error);
+    ctx->step++;
+    connect_3gpp_context_step (ctx);
+}
+
 static gboolean
 connect_retry_ndisstatqry_check_cb (MMBroadbandBearerHuawei *self)
 {
@@ -104,7 +211,7 @@ connect_retry_ndisstatqry_check_cb (MMBroadbandBearerHuawei *self)
     /* Retry same step */
     connect_3gpp_context_step (ctx);
 
-    return FALSE;
+    return G_SOURCE_REMOVE;
 }
 
 static void
@@ -193,16 +300,16 @@ static gint
 huawei_parse_auth_type (MMBearerAllowedAuth mm_auth)
 {
     switch (mm_auth) {
-        case MM_BEARER_ALLOWED_AUTH_NONE:
-            return MM_BEARER_HUAWEI_AUTH_NONE;
-        case MM_BEARER_ALLOWED_AUTH_PAP:
-            return MM_BEARER_HUAWEI_AUTH_PAP;
-        case MM_BEARER_ALLOWED_AUTH_CHAP:
-            return MM_BEARER_HUAWEI_AUTH_CHAP;
-        case MM_BEARER_ALLOWED_AUTH_MSCHAPV2:
-            return MM_BEARER_HUAWEI_AUTH_MSCHAPV2;
-        default:
-            return MM_BEARER_HUAWEI_AUTH_UNKNOWN;
+    case MM_BEARER_ALLOWED_AUTH_NONE:
+        return MM_BEARER_HUAWEI_AUTH_NONE;
+    case MM_BEARER_ALLOWED_AUTH_PAP:
+        return MM_BEARER_HUAWEI_AUTH_PAP;
+    case MM_BEARER_ALLOWED_AUTH_CHAP:
+        return MM_BEARER_HUAWEI_AUTH_CHAP;
+    case MM_BEARER_ALLOWED_AUTH_MSCHAPV2:
+        return MM_BEARER_HUAWEI_AUTH_MSCHAPV2;
+    default:
+        return MM_BEARER_HUAWEI_AUTH_UNKNOWN;
     }
 }
 
@@ -243,12 +350,12 @@ connect_3gpp_context_step (Connect3gppContext *ctx)
     case CONNECT_3GPP_CONTEXT_STEP_FIRST: {
         MMBearerIpFamily ip_family;
 
-        ip_family = mm_bearer_properties_get_ip_type (mm_bearer_peek_config (MM_BEARER (ctx->self)));
+        ip_family = mm_bearer_properties_get_ip_type (mm_base_bearer_peek_config (MM_BASE_BEARER (ctx->self)));
         if (ip_family == MM_BEARER_IP_FAMILY_NONE ||
             ip_family == MM_BEARER_IP_FAMILY_ANY) {
             gchar *ip_family_str;
 
-            ip_family = mm_bearer_get_default_ip_family (MM_BEARER (ctx->self));
+            ip_family = mm_base_bearer_get_default_ip_family (MM_BASE_BEARER (ctx->self));
             ip_family_str = mm_bearer_ip_family_build_string_from_mask (ip_family);
             mm_dbg ("No specific IP family requested, defaulting to %s",
                     ip_family_str);
@@ -279,17 +386,31 @@ connect_3gpp_context_step (Connect3gppContext *ctx)
         gint                 encoded_auth = MM_BEARER_HUAWEI_AUTH_UNKNOWN;
         gchar               *command;
 
-        apn = mm_bearer_properties_get_apn (mm_bearer_peek_config (MM_BEARER (ctx->self)));
-        user = mm_bearer_properties_get_user (mm_bearer_peek_config (MM_BEARER (ctx->self)));
-        passwd = mm_bearer_properties_get_password (mm_bearer_peek_config (MM_BEARER (ctx->self)));
-        auth = mm_bearer_properties_get_allowed_auth (mm_bearer_peek_config (MM_BEARER (ctx->self)));
+        apn = mm_bearer_properties_get_apn (mm_base_bearer_peek_config (MM_BASE_BEARER (ctx->self)));
+        user = mm_bearer_properties_get_user (mm_base_bearer_peek_config (MM_BASE_BEARER (ctx->self)));
+        passwd = mm_bearer_properties_get_password (mm_base_bearer_peek_config (MM_BASE_BEARER (ctx->self)));
+        auth = mm_bearer_properties_get_allowed_auth (mm_base_bearer_peek_config (MM_BASE_BEARER (ctx->self)));
         encoded_auth = huawei_parse_auth_type (auth);
 
-        command = g_strdup_printf ("AT^NDISDUP=1,1,\"%s\",\"%s\",\"%s\",%d",
-                                   apn == NULL ? "" : apn,
-                                   user == NULL ? "" : user,
-                                   passwd == NULL ? "" : passwd,
-                                   encoded_auth == MM_BEARER_HUAWEI_AUTH_UNKNOWN ? MM_BEARER_HUAWEI_AUTH_NONE : encoded_auth);
+        /* Default to no authentication if not specified */
+        if ((encoded_auth = huawei_parse_auth_type (auth)) == MM_BEARER_HUAWEI_AUTH_UNKNOWN)
+            encoded_auth = MM_BEARER_HUAWEI_AUTH_NONE;
+
+        if (!user && !passwd)
+            command = g_strdup_printf ("AT^NDISDUP=1,1,\"%s\"",
+                                       apn == NULL ? "" : apn);
+        else if (encoded_auth == MM_BEARER_HUAWEI_AUTH_NONE)
+            command = g_strdup_printf ("AT^NDISDUP=1,1,\"%s\",\"%s\",\"%s\"",
+                                       apn == NULL ? "" : apn,
+                                       user == NULL ? "" : user,
+                                       passwd == NULL ? "" : passwd);
+        else
+            command = g_strdup_printf ("AT^NDISDUP=1,1,\"%s\",\"%s\",\"%s\",%d",
+                                       apn == NULL ? "" : apn,
+                                       user == NULL ? "" : user,
+                                       passwd == NULL ? "" : passwd,
+                                       encoded_auth);
+
         mm_base_modem_at_command_full (ctx->modem,
                                        ctx->primary,
                                        command,
@@ -344,21 +465,30 @@ connect_3gpp_context_step (Connect3gppContext *ctx)
                                        g_object_ref (ctx->self));
         return;
 
+    case CONNECT_3GPP_CONTEXT_STEP_IP_CONFIG:
+        mm_base_modem_at_command_full (ctx->modem,
+                                       ctx->primary,
+                                       "^DHCP?",
+                                       3,
+                                       FALSE,
+                                       FALSE,
+                                       NULL,
+                                       (GAsyncReadyCallback)connect_dhcp_check_ready,
+                                       g_object_ref (ctx->self));
+        return;
+
     case CONNECT_3GPP_CONTEXT_STEP_LAST:
         /* Clear context */
         ctx->self->priv->connect_pending = NULL;
 
         /* Setup result */
         {
-            MMBearerIpConfig *ipv4_config;
-
-            ipv4_config = mm_bearer_ip_config_new ();
-            mm_bearer_ip_config_set_method (ipv4_config, MM_BEARER_IP_METHOD_DHCP);
-            g_simple_async_result_set_op_res_gpointer (
-                ctx->result,
-                mm_bearer_connect_result_new (ctx->data, ipv4_config, NULL),
-                (GDestroyNotify)mm_bearer_connect_result_unref);
-            g_object_unref (ipv4_config);
+            if (ctx->ipv4_config) {
+                g_simple_async_result_set_op_res_gpointer (
+                    ctx->result,
+                    mm_bearer_connect_result_new (ctx->data, ctx->ipv4_config, NULL),
+                    (GDestroyNotify)mm_bearer_connect_result_unref);
+            }
         }
 
         connect_3gpp_context_complete_and_free (ctx);
@@ -369,8 +499,8 @@ connect_3gpp_context_step (Connect3gppContext *ctx)
 static void
 connect_3gpp (MMBroadbandBearer *self,
               MMBroadbandModem *modem,
-              MMAtSerialPort *primary,
-              MMAtSerialPort *secondary,
+              MMPortSerialAt *primary,
+              MMPortSerialAt *secondary,
               GCancellable *cancellable,
               GAsyncReadyCallback callback,
               gpointer user_data)
@@ -396,7 +526,6 @@ connect_3gpp (MMBroadbandBearer *self,
     ctx = g_slice_new0 (Connect3gppContext);
     ctx->self = g_object_ref (self);
     ctx->modem = g_object_ref (modem);
-    ctx->primary = g_object_ref (primary);
     ctx->data = g_object_ref (data);
     ctx->result = g_simple_async_result_new (G_OBJECT (self),
                                              callback,
@@ -407,6 +536,9 @@ connect_3gpp (MMBroadbandBearer *self,
 
     g_assert (ctx->self->priv->connect_pending == NULL);
     g_assert (ctx->self->priv->disconnect_pending == NULL);
+
+    /* Get correct dial port to use */
+    ctx->primary = get_dial_port (MM_BROADBAND_MODEM_HUAWEI (ctx->modem), ctx->data, primary);
 
     /* Run! */
     connect_3gpp_context_step (ctx);
@@ -425,7 +557,7 @@ typedef enum {
 typedef struct {
     MMBroadbandBearerHuawei *self;
     MMBaseModem *modem;
-    MMAtSerialPort *primary;
+    MMPortSerialAt *primary;
     GSimpleAsyncResult *result;
     Disconnect3gppContextStep step;
     guint check_count;
@@ -467,7 +599,7 @@ disconnect_retry_ndisstatqry_check_cb (MMBroadbandBearerHuawei *self)
 
     /* Retry same step */
     disconnect_3gpp_context_step (ctx);
-    return FALSE;
+    return G_SOURCE_REMOVE;
 }
 
 static void
@@ -626,8 +758,8 @@ disconnect_3gpp_context_step (Disconnect3gppContext *ctx)
 static void
 disconnect_3gpp (MMBroadbandBearer *self,
                  MMBroadbandModem *modem,
-                 MMAtSerialPort *primary,
-                 MMAtSerialPort *secondary,
+                 MMPortSerialAt *primary,
+                 MMPortSerialAt *secondary,
                  MMPort *data,
                  guint cid,
                  GAsyncReadyCallback callback,
@@ -640,7 +772,6 @@ disconnect_3gpp (MMBroadbandBearer *self,
     ctx = g_slice_new0 (Disconnect3gppContext);
     ctx->self = g_object_ref (self);
     ctx->modem = MM_BASE_MODEM (g_object_ref (modem));
-    ctx->primary = g_object_ref (primary);
     ctx->result = g_simple_async_result_new (G_OBJECT (self),
                                              callback,
                                              user_data,
@@ -649,6 +780,9 @@ disconnect_3gpp (MMBroadbandBearer *self,
 
     g_assert (ctx->self->priv->connect_pending == NULL);
     g_assert (ctx->self->priv->disconnect_pending == NULL);
+
+    /* Get correct dial port to use */
+    ctx->primary = get_dial_port (MM_BROADBAND_MODEM_HUAWEI (ctx->modem), data, primary);
 
     /* Start! */
     disconnect_3gpp_context_step (ctx);
@@ -660,16 +794,16 @@ static gboolean
 network_disconnect_3gpp_delayed (MMBroadbandBearerHuawei *self)
 {
     mm_dbg ("Disconnect bearer '%s' on network request.",
-            mm_bearer_get_path (MM_BEARER (self)));
+            mm_base_bearer_get_path (MM_BASE_BEARER (self)));
 
     self->priv->network_disconnect_pending_id = 0;
-    mm_bearer_report_connection_status (MM_BEARER (self),
-                                        MM_BEARER_CONNECTION_STATUS_DISCONNECTED);
-    return FALSE;
+    mm_base_bearer_report_connection_status (MM_BASE_BEARER (self),
+                                             MM_BEARER_CONNECTION_STATUS_DISCONNECTED);
+    return G_SOURCE_REMOVE;
 }
 
 static void
-report_connection_status (MMBearer *bearer,
+report_connection_status (MMBaseBearer *bearer,
                           MMBearerConnectionStatus status)
 {
     MMBroadbandBearerHuawei *self = MM_BROADBAND_BEARER_HUAWEI (bearer);
@@ -697,10 +831,10 @@ report_connection_status (MMBearer *bearer,
         /* MM_BEARER_CONNECTION_STATUS_DISCONNECTING is used to indicate that the
          * reporting of disconnection should be delayed. See MMBroadbandModemHuawei's
          * bearer_report_connection_status for details. */
-        if (mm_bearer_get_status (bearer) == MM_BEARER_STATUS_CONNECTED &&
+        if (mm_base_bearer_get_status (bearer) == MM_BEARER_STATUS_CONNECTED &&
             self->priv->network_disconnect_pending_id == 0) {
             mm_dbg ("Delay network-initiated disconnection of bearer '%s'",
-                    mm_bearer_get_path (MM_BEARER (self)));
+                    mm_base_bearer_get_path (MM_BASE_BEARER (self)));
             self->priv->network_disconnect_pending_id = (g_timeout_add_seconds (
                                                              4,
                                                              (GSourceFunc) network_disconnect_3gpp_delayed,
@@ -710,14 +844,14 @@ report_connection_status (MMBearer *bearer,
     }
 
     /* Report disconnected right away */
-    MM_BEARER_CLASS (mm_broadband_bearer_huawei_parent_class)->report_connection_status (
+    MM_BASE_BEARER_CLASS (mm_broadband_bearer_huawei_parent_class)->report_connection_status (
         bearer,
         MM_BEARER_CONNECTION_STATUS_DISCONNECTED);
 }
 
 /*****************************************************************************/
 
-MMBearer *
+MMBaseBearer *
 mm_broadband_bearer_huawei_new_finish (GAsyncResult *res,
                                        GError **error)
 {
@@ -732,9 +866,9 @@ mm_broadband_bearer_huawei_new_finish (GAsyncResult *res,
         return NULL;
 
     /* Only export valid bearers */
-    mm_bearer_export (MM_BEARER (bearer));
+    mm_base_bearer_export (MM_BASE_BEARER (bearer));
 
-    return MM_BEARER (bearer);
+    return MM_BASE_BEARER (bearer);
 }
 
 static void
@@ -763,8 +897,8 @@ mm_broadband_bearer_huawei_new (MMBroadbandModemHuawei *modem,
         cancellable,
         callback,
         user_data,
-        MM_BEARER_MODEM, modem,
-        MM_BEARER_CONFIG, config,
+        MM_BASE_BEARER_MODEM, modem,
+        MM_BASE_BEARER_CONFIG, config,
         NULL);
 }
 
@@ -772,7 +906,7 @@ static void
 mm_broadband_bearer_huawei_init (MMBroadbandBearerHuawei *self)
 {
     /* Initialize private data */
-    self->priv = G_TYPE_INSTANCE_GET_PRIVATE ((self),
+    self->priv = G_TYPE_INSTANCE_GET_PRIVATE (self,
                                               MM_TYPE_BROADBAND_BEARER_HUAWEI,
                                               MMBroadbandBearerHuaweiPrivate);
 }
@@ -781,13 +915,13 @@ static void
 mm_broadband_bearer_huawei_class_init (MMBroadbandBearerHuaweiClass *klass)
 {
     GObjectClass *object_class = G_OBJECT_CLASS (klass);
-    MMBearerClass *bearer_class = MM_BEARER_CLASS (klass);
+    MMBaseBearerClass *base_bearer_class = MM_BASE_BEARER_CLASS (klass);
     MMBroadbandBearerClass *broadband_bearer_class = MM_BROADBAND_BEARER_CLASS (klass);
 
     g_type_class_add_private (object_class, sizeof (MMBroadbandBearerHuaweiPrivate));
 
     object_class->dispose = dispose;
-    bearer_class->report_connection_status = report_connection_status;
+    base_bearer_class->report_connection_status = report_connection_status;
     broadband_bearer_class->connect_3gpp = connect_3gpp;
     broadband_bearer_class->connect_3gpp_finish = connect_3gpp_finish;
     broadband_bearer_class->disconnect_3gpp = disconnect_3gpp;

@@ -19,9 +19,11 @@
 #include <glib-object.h>
 #include <gio/gio.h>
 
-#include "mm-at-serial-port.h"
+#define _LIBMM_INSIDE_MM
+#include <libmm-glib.h>
+
 #include "mm-sms-part.h"
-#include "mm-sms.h"
+#include "mm-base-sms.h"
 
 #define MM_TYPE_IFACE_MODEM_MESSAGING               (mm_iface_modem_messaging_get_type ())
 #define MM_IFACE_MODEM_MESSAGING(obj)               (G_TYPE_CHECK_INSTANCE_CAST ((obj), MM_TYPE_IFACE_MODEM_MESSAGING, MMIfaceModemMessaging))
@@ -60,6 +62,13 @@ struct _MMIfaceModemMessaging {
                                                 GArray **mem2,
                                                 GArray **mem3,
                                                 GError **error);
+    /* Initializes the state of the storages */
+    void (* init_current_storages) (MMIfaceModemMessaging *self,
+                                    GAsyncReadyCallback callback,
+                                    gpointer user_data);
+    gboolean (*init_current_storages_finish) (MMIfaceModemMessaging *self,
+                                              GAsyncResult *res,
+                                              GError **error);
 
     /* Set default storage (async) */
     void (* set_default_storage) (MMIfaceModemMessaging *self,
@@ -121,7 +130,7 @@ struct _MMIfaceModemMessaging {
                                                GError **error);
 
     /* Create SMS objects */
-    MMSms * (* create_sms) (MMIfaceModemMessaging *self);
+    MMBaseSms * (* create_sms) (MMIfaceModemMessaging *self);
 };
 
 GType mm_iface_modem_messaging_get_type (void);
@@ -174,7 +183,7 @@ gboolean mm_iface_modem_messaging_is_storage_supported_for_receiving (MMIfaceMod
                                                                       GError **error);
 
 /* SMS creation */
-MMSms *mm_iface_modem_messaging_create_sms (MMIfaceModemMessaging *self);
+MMBaseSms *mm_iface_modem_messaging_create_sms (MMIfaceModemMessaging *self);
 
 /* Look for a new valid multipart reference */
 guint8 mm_iface_modem_messaging_get_local_multipart_reference (MMIfaceModemMessaging *self,

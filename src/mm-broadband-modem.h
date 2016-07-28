@@ -13,6 +13,7 @@
  * Copyright (C) 2008 - 2009 Novell, Inc.
  * Copyright (C) 2009 - 2011 Red Hat, Inc.
  * Copyright (C) 2011 Google, Inc.
+ * Copyright (C) 2015 - Marco Bascetta <marco.bascetta@sadel.it>
  */
 
 #ifndef MM_BROADBAND_MODEM_H
@@ -23,6 +24,7 @@
 
 #include <ModemManager.h>
 
+#include "mm-charsets.h"
 #include "mm-base-modem.h"
 
 #define MM_TYPE_BROADBAND_MODEM            (mm_broadband_modem_get_type ())
@@ -104,6 +106,8 @@ gchar *mm_broadband_modem_take_and_convert_to_utf8 (MMBroadbandModem *self,
  */
 gchar *mm_broadband_modem_take_and_convert_to_current_charset (MMBroadbandModem *self,
                                                                gchar *str);
+
+MMModemCharset mm_broadband_modem_get_current_charset (MMBroadbandModem *self);
 
 /* Create a unique device identifier string using the ATI and ATI1 replies and some
  * additional internal info */

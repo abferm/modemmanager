@@ -4,7 +4,7 @@
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
+ * the Free Software Foundation, either version 2 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -71,17 +71,17 @@ static GOptionEntry entries[] = {
 GOptionGroup *
 mmcli_manager_get_option_group (void)
 {
-	GOptionGroup *group;
+    GOptionGroup *group;
 
-	/* Status options */
-	group = g_option_group_new ("manager",
-	                            "Manager options",
-	                            "Show manager options",
-	                            NULL,
-	                            NULL);
-	g_option_group_add_entries (group, entries);
+    /* Status options */
+    group = g_option_group_new ("manager",
+                                "Manager options",
+                                "Show manager options",
+                                NULL,
+                                NULL);
+    g_option_group_add_entries (group, entries);
 
-	return group;
+    return group;
 }
 
 gboolean
@@ -190,10 +190,15 @@ scan_devices_ready (MMManager    *manager,
 static void
 print_modem_short_info (MMObject *modem)
 {
+    const gchar *manufacturer, *model;
+
+    manufacturer = mm_modem_get_manufacturer (mm_object_peek_modem (modem));
+    model = mm_modem_get_model (mm_object_peek_modem (modem));
+
     g_print ("\t%s [%s] %s\n",
              mm_object_get_path (modem),
-             mm_modem_get_manufacturer (mm_object_peek_modem (modem)),
-             mm_modem_get_model (mm_object_peek_modem (modem)));
+             manufacturer ? manufacturer : "unknown",
+             model ? model : "unknown");
 }
 
 static void

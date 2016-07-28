@@ -4,7 +4,7 @@
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
+ * the Free Software Foundation, either version 2 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -73,17 +73,17 @@ static GOptionEntry entries[] = {
 GOptionGroup *
 mmcli_sms_get_option_group (void)
 {
-	GOptionGroup *group;
+    GOptionGroup *group;
 
-	/* Status options */
-	group = g_option_group_new ("sms",
-	                            "SMS options",
-	                            "Show SMS options",
-	                            NULL,
-	                            NULL);
-	g_option_group_add_entries (group, entries);
+    /* Status options */
+    group = g_option_group_new ("sms",
+                                "SMS options",
+                                "Show SMS options",
+                                NULL,
+                                NULL);
+    g_option_group_add_entries (group, entries);
 
-	return group;
+    return group;
 }
 
 gboolean

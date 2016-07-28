@@ -1,8 +1,93 @@
-modemmanager (1.2.0-1~bpo70+1) wheezy-backports; urgency=medium
+modemmanager (1.6.0-1) unstable; urgency=medium
 
-  * Rebuild for wheezy-backports.
+  * New upstream release.
 
- -- Alex Ferm <aferm@petropower.com>  Wed, 03 Sep 2014 14:47:43 -0500
+ -- Michael Biebl <biebl@debian.org>  Thu, 28 Jul 2016 15:39:57 +0200
+
+modemmanager (1.5.993-1) unstable; urgency=medium
+
+  * New upstream release (1.6-rc4).
+  * Update Build-Depends as per configure.ac.
+  * Install bash-completion file for mmcli.
+  * Update symbols file.
+  * Enable suspend/resume support. Requires libsystemd.
+  * Bump Standards-Version to 3.9.8.
+
+ -- Michael Biebl <biebl@debian.org>  Fri, 08 Jul 2016 02:19:24 +0200
+
+modemmanager (1.4.14-1) unstable; urgency=medium
+
+  [ Laurent Bigonville ]
+  * New upstream release.
+  * debian/control: Fix capitalisation of Bluetooth (Closes: #754439)
+  * Remove modemmanager-dbg package and rely on automatic dbgsym package
+  * debian/control: Fix Vcs-Git URL (again) to please lintian
+  * debian/control: Bump Standards-Version to 3.9.7 (no further changes)
+
+  [ Michael Biebl ]
+  * Remove outdated debian/README.source.
+  * Use https:// for upstream homepage.
+  * Bump Build-Depends on debhelper for dh_strip --dbgsym-migration support.
+  * Drop Ubuntu specific upstart job now that Ubuntu has switched to systemd as
+    well. (Closes: #804054)
+
+ -- Michael Biebl <biebl@debian.org>  Wed, 23 Mar 2016 21:30:46 +0100
+
+modemmanager (1.4.12-1) unstable; urgency=medium
+
+  * New upstream release.
+
+ -- Michael Biebl <biebl@debian.org>  Thu, 08 Oct 2015 12:47:56 +0200
+
+modemmanager (1.4.10-1) unstable; urgency=medium
+
+  * New upstream release.
+    - Blacklist: ignore devices from Posnet Polska S.A. (Closes: #791341)
+
+ -- Michael Biebl <biebl@debian.org>  Sun, 26 Jul 2015 20:43:23 +0200
+
+modemmanager (1.4.8-1) unstable; urgency=medium
+
+  * Upload to unstable.
+  * New upstream release.
+
+ -- Michael Biebl <biebl@debian.org>  Fri, 08 May 2015 01:44:53 +0200
+
+modemmanager (1.4.4-1) experimental; urgency=medium
+
+  * Imported Upstream version 1.4.4.
+  * Bump Build-Depends on libqmi-glib-dev to (>= 1.12.4).
+
+ -- Michael Biebl <biebl@debian.org>  Fri, 13 Feb 2015 10:28:55 +0100
+
+modemmanager (1.4.2-1) experimental; urgency=medium
+
+  [ Marius B. Kotsbak ]
+  * Imported Upstream version 1.4.2.
+  * Removed all patches applied upstream.
+  * Update to latest Standards-Version 3.9.6.
+
+  [ Michael Biebl ]
+  * Set debian-branch to experimental in gbp.conf.
+  * Update Vcs-Browser to use cgit and https.
+  * Install typelib files into multiarch paths now that gobject-introspection
+    supports that.
+  * Mark dev and gir packages as Multi-Arch: same.
+
+ -- Michael Biebl <biebl@debian.org>  Mon, 09 Feb 2015 00:29:46 +0100
+
+modemmanager (1.4.0-1) unstable; urgency=medium
+
+  * New upstream release.
+    - Fixes conflicting definitions of mm_manager_new. (Closes: #749387)
+  * Refresh patches.
+  * Bump Build-Depends on libmbim-glib-dev to (>= 1.10).
+  * Install NEWS file which includes the relevant upstream changes.
+    (Closes: #641467)
+  * Update symbols file for libmm-glib0.
+  * Add Build-Depends on dbus, required to run the test suite.
+
+ -- Michael Biebl <biebl@debian.org>  Wed, 17 Sep 2014 08:46:25 +0200
 
 modemmanager (1.2.0-1) unstable; urgency=medium
 

@@ -124,6 +124,9 @@ typedef enum { /*< underscore_name=mm_core_error >*/
  * @MM_MOBILE_EQUIPMENT_ERROR_GPRS_NO_CELLS_IN_LOCATION_AREA: No cells in this location area.
  * @MM_MOBILE_EQUIPMENT_ERROR_GPRS_NETWORK_FAILURE: Network failure.
  * @MM_MOBILE_EQUIPMENT_ERROR_GPRS_CONGESTION: Congestion.
+ * @MM_MOBILE_EQUIPMENT_ERROR_GPRS_INSUFFICIENT_RESOURCES: Insufficient resources.
+ * @MM_MOBILE_EQUIPMENT_ERROR_GPRS_MISSING_OR_UNKNOWN_APN: Missing or unknown APN.
+ * @MM_MOBILE_EQUIPMENT_ERROR_GPRS_USER_AUTHENTICATION_FAILED: User authentication failed.
  * @MM_MOBILE_EQUIPMENT_ERROR_GPRS_SERVICE_OPTION_NOT_SUPPORTED: Service option not supported.
  * @MM_MOBILE_EQUIPMENT_ERROR_GPRS_SERVICE_OPTION_NOT_SUBSCRIBED: Requested service option not subscribed.
  * @MM_MOBILE_EQUIPMENT_ERROR_GPRS_SERVICE_OPTION_OUT_OF_ORDER: Service option temporarily out of order.
@@ -184,6 +187,9 @@ typedef enum { /*< underscore_name=mm_mobile_equipment_error >*/
     MM_MOBILE_EQUIPMENT_ERROR_GPRS_NO_CELLS_IN_LOCATION_AREA     = 115, /*< nick=GprsNoCellsInLocationArea      >*/
     MM_MOBILE_EQUIPMENT_ERROR_GPRS_NETWORK_FAILURE               = 117, /*< nick=GprsNetworkFailure             >*/
     MM_MOBILE_EQUIPMENT_ERROR_GPRS_CONGESTION                    = 122, /*< nick=GprsCongestion                 >*/
+    MM_MOBILE_EQUIPMENT_ERROR_GPRS_INSUFFICIENT_RESOURCES        = 126, /*< nick=GprsInsufficientResources      >*/
+    MM_MOBILE_EQUIPMENT_ERROR_GPRS_MISSING_OR_UNKNOWN_APN        = 127, /*< nick=GprsMissingOrUnknownApn        >*/
+    MM_MOBILE_EQUIPMENT_ERROR_GPRS_USER_AUTHENTICATION_FAILED    = 129, /*< nick=GprsUserAuthenticationFailed   >*/
     MM_MOBILE_EQUIPMENT_ERROR_GPRS_SERVICE_OPTION_NOT_SUPPORTED  = 132, /*< nick=GprsServiceOptionNotSupported  >*/
     MM_MOBILE_EQUIPMENT_ERROR_GPRS_SERVICE_OPTION_NOT_SUBSCRIBED = 133, /*< nick=GprsServiceOptionNotSubscribed >*/
     MM_MOBILE_EQUIPMENT_ERROR_GPRS_SERVICE_OPTION_OUT_OF_ORDER   = 134, /*< nick=GprsServiceOptionOutOfOrder    >*/
@@ -220,6 +226,7 @@ typedef enum { /*< underscore_name=mm_connection_error >*/
  * @MM_SERIAL_ERROR_FLASH_FAILED: Could not flash the device.
  * @MM_SERIAL_ERROR_NOT_OPEN: The serial port is not open.
  * @MM_SERIAL_ERROR_PARSE_FAILED: The serial port specific parsing failed.
+ * @MM_SERIAL_ERROR_FRAME_NOT_FOUND: The serial port reported that the frame marker wasn't found (e.g. for QCDM).
  *
  * Serial errors that may be reported by ModemManager.
  */
@@ -232,6 +239,7 @@ typedef enum { /*< underscore_name=mm_serial_error >*/
     MM_SERIAL_ERROR_FLASH_FAILED          = 5, /*< nick=FlashFailed        >*/
     MM_SERIAL_ERROR_NOT_OPEN              = 6, /*< nick=NotOpen            >*/
     MM_SERIAL_ERROR_PARSE_FAILED          = 7, /*< nick=ParseFailed        >*/
+    MM_SERIAL_ERROR_FRAME_NOT_FOUND       = 8, /*< nick=FrameNotFound      >*/
 } MMSerialError;
 
 /**

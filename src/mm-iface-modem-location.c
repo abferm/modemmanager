@@ -137,6 +137,10 @@ build_location_dictionary (GVariant *previous,
             case MM_MODEM_LOCATION_SOURCE_CDMA_BS:
                 location_cdma_bs_value = value;
                 break;
+            case MM_MODEM_LOCATION_SOURCE_GPS_UNMANAGED:
+                g_assert_not_reached ();
+            case MM_MODEM_LOCATION_SOURCE_AGPS:
+                g_assert_not_reached ();
             default:
                 g_warn_if_reached ();
                 break;
@@ -214,8 +218,8 @@ notify_gps_location_update (MMIfaceModemLocation *self,
     const gchar *dbus_path;
 
     dbus_path = g_dbus_object_get_object_path (G_DBUS_OBJECT (self));
-    mm_info ("Modem %s: GPS location updated",
-             dbus_path);
+    mm_dbg ("Modem %s: GPS location updated",
+            dbus_path);
 
     /* We only update the property if we are supposed to signal
      * location */
@@ -249,7 +253,7 @@ mm_iface_modem_location_gps_update (MMIfaceModemLocation *self,
         g_assert (ctx->location_gps_nmea != NULL);
         if (mm_location_gps_nmea_add_trace (ctx->location_gps_nmea, nmea_trace) &&
             (ctx->location_gps_nmea_last_time == 0 ||
-             time (NULL) - ctx->location_gps_nmea_last_time >= MM_LOCATION_GPS_REFRESH_TIME_SECS)) {
+             time (NULL) - ctx->location_gps_nmea_last_time >= mm_gdbus_modem_location_get_gps_refresh_rate (skeleton))) {
             ctx->location_gps_nmea_last_time = time (NULL);
             update_nmea = TRUE;
         }
@@ -259,7 +263,7 @@ mm_iface_modem_location_gps_update (MMIfaceModemLocation *self,
         g_assert (ctx->location_gps_raw != NULL);
         if (mm_location_gps_raw_add_trace (ctx->location_gps_raw, nmea_trace) &&
             (ctx->location_gps_raw_last_time == 0 ||
-             time (NULL) - ctx->location_gps_raw_last_time >= MM_LOCATION_GPS_REFRESH_TIME_SECS)) {
+             time (NULL) - ctx->location_gps_raw_last_time >= mm_gdbus_modem_location_get_gps_refresh_rate (skeleton))) {
             ctx->location_gps_raw_last_time = time (NULL);
             update_raw = TRUE;
         }
@@ -284,13 +288,13 @@ notify_3gpp_location_update (MMIfaceModemLocation *self,
     const gchar *dbus_path;
 
     dbus_path = g_dbus_object_get_object_path (G_DBUS_OBJECT (self));
-    mm_info ("Modem %s: 3GPP location updated "
-             "(MCC: '%u', MNC: '%u', Location area code: '%lX', Cell ID: '%lX')",
-             dbus_path,
-             mm_location_3gpp_get_mobile_country_code (location_3gpp),
-             mm_location_3gpp_get_mobile_network_code (location_3gpp),
-             mm_location_3gpp_get_location_area_code (location_3gpp),
-             mm_location_3gpp_get_cell_id (location_3gpp));
+    mm_dbg ("Modem %s: 3GPP location updated "
+            "(MCC: '%u', MNC: '%u', Location area code: '%lX', Cell ID: '%lX')",
+            dbus_path,
+            mm_location_3gpp_get_mobile_country_code (location_3gpp),
+            mm_location_3gpp_get_mobile_network_code (location_3gpp),
+            mm_location_3gpp_get_location_area_code (location_3gpp),
+            mm_location_3gpp_get_cell_id (location_3gpp));
 
     /* We only update the property if we are supposed to signal
      * location */
@@ -401,11 +405,11 @@ notify_cdma_bs_location_update (MMIfaceModemLocation *self,
     const gchar *dbus_path;
 
     dbus_path = g_dbus_object_get_object_path (G_DBUS_OBJECT (self));
-    mm_info ("Modem %s: CDMA BS location updated "
-             "(Longitude: '%lf', Latitude: '%lf')",
-             dbus_path,
-             mm_location_cdma_bs_get_longitude (location_cdma_bs),
-             mm_location_cdma_bs_get_latitude (location_cdma_bs));
+    mm_dbg ("Modem %s: CDMA BS location updated "
+            "(Longitude: '%lf', Latitude: '%lf')",
+            dbus_path,
+            mm_location_cdma_bs_get_longitude (location_cdma_bs),
+            mm_location_cdma_bs_get_latitude (location_cdma_bs));
 
     /* We only update the property if we are supposed to signal
      * location */
@@ -505,6 +509,9 @@ update_location_source_status (MMIfaceModemLocation *self,
         } else
             g_clear_object (&ctx->location_cdma_bs);
         break;
+    case MM_MODEM_LOCATION_SOURCE_GPS_UNMANAGED:
+    case MM_MODEM_LOCATION_SOURCE_AGPS:
+        /* Nothing to setup in the context */
     default:
         break;
     }
@@ -612,7 +619,7 @@ setup_gathering_step (SetupGatheringContext *ctx)
         return;
     }
 
-    while (ctx->current <= MM_MODEM_LOCATION_SOURCE_CDMA_BS) {
+    while (ctx->current <= MM_MODEM_LOCATION_SOURCE_AGPS) {
         gchar *source_str;
 
         if (ctx->to_enable & ctx->current) {
@@ -709,7 +716,7 @@ setup_gathering (MMIfaceModemLocation *self,
 
     /* Loop through all known bits in the bitmask to enable/disable specific location sources */
     for (source = MM_MODEM_LOCATION_SOURCE_3GPP_LAC_CI;
-         source <= MM_MODEM_LOCATION_SOURCE_CDMA_BS;
+         source <= MM_MODEM_LOCATION_SOURCE_AGPS;
          source = source << 1) {
         /* skip unsupported sources */
         if (!(mm_gdbus_modem_location_get_capabilities (ctx->skeleton) & source))
@@ -732,6 +739,22 @@ setup_gathering (MMIfaceModemLocation *self,
         }
 
         g_free (str);
+    }
+
+    /* When standard GPS retrieval (RAW/NMEA) is enabled, we cannot enable the
+     * UNMANAGED setup, and viceversa. */
+    if ((ctx->to_enable & MM_MODEM_LOCATION_SOURCE_GPS_UNMANAGED &&
+         currently_enabled & (MM_MODEM_LOCATION_SOURCE_GPS_RAW | MM_MODEM_LOCATION_SOURCE_GPS_NMEA)) ||
+        (ctx->to_enable & (MM_MODEM_LOCATION_SOURCE_GPS_RAW | MM_MODEM_LOCATION_SOURCE_GPS_NMEA) &&
+         currently_enabled & MM_MODEM_LOCATION_SOURCE_GPS_UNMANAGED) ||
+        (ctx->to_enable & (MM_MODEM_LOCATION_SOURCE_GPS_RAW | MM_MODEM_LOCATION_SOURCE_GPS_NMEA) &&
+         ctx->to_enable & MM_MODEM_LOCATION_SOURCE_GPS_UNMANAGED)) {
+        g_simple_async_result_set_error (ctx->result,
+                                         MM_CORE_ERROR,
+                                         MM_CORE_ERROR_FAILED,
+                                         "Cannot have both unmanaged GPS and raw/nmea GPS enabled at the same time");
+        setup_gathering_context_complete_and_free (ctx);
+        return;
     }
 
     if (ctx->to_enable != MM_MODEM_LOCATION_SOURCE_NONE) {
@@ -882,6 +905,205 @@ handle_setup (MmGdbusModemLocation *skeleton,
                              invocation,
                              MM_AUTHORIZATION_DEVICE_CONTROL,
                              (GAsyncReadyCallback)handle_setup_auth_ready,
+                             ctx);
+    return TRUE;
+}
+
+/*****************************************************************************/
+
+typedef struct {
+    MmGdbusModemLocation *skeleton;
+    GDBusMethodInvocation *invocation;
+    MMIfaceModemLocation *self;
+    gchar *supl;
+} HandleSetSuplServerContext;
+
+static void
+handle_set_supl_server_context_free (HandleSetSuplServerContext *ctx)
+{
+    g_object_unref (ctx->skeleton);
+    g_object_unref (ctx->invocation);
+    g_object_unref (ctx->self);
+    g_free (ctx->supl);
+    g_slice_free (HandleSetSuplServerContext, ctx);
+}
+
+static void
+set_supl_server_ready (MMIfaceModemLocation *self,
+                       GAsyncResult *res,
+                       HandleSetSuplServerContext *ctx)
+{
+    GError *error = NULL;
+
+    if (!MM_IFACE_MODEM_LOCATION_GET_INTERFACE (self)->set_supl_server_finish (self, res, &error))
+        g_dbus_method_invocation_take_error (ctx->invocation, error);
+    else {
+        mm_gdbus_modem_location_set_supl_server (ctx->skeleton, ctx->supl);
+        mm_gdbus_modem_location_complete_set_supl_server (ctx->skeleton, ctx->invocation);
+    }
+
+    handle_set_supl_server_context_free (ctx);
+}
+
+static void
+handle_set_supl_server_auth_ready (MMBaseModem *self,
+                                   GAsyncResult *res,
+                                   HandleSetSuplServerContext *ctx)
+{
+    GError *error = NULL;
+    MMModemState modem_state;
+
+    if (!mm_base_modem_authorize_finish (self, res, &error)) {
+        g_dbus_method_invocation_take_error (ctx->invocation, error);
+        handle_set_supl_server_context_free (ctx);
+        return;
+    }
+
+    modem_state = MM_MODEM_STATE_UNKNOWN;
+    g_object_get (self,
+                  MM_IFACE_MODEM_STATE, &modem_state,
+                  NULL);
+    if (modem_state < MM_MODEM_STATE_ENABLED) {
+        g_dbus_method_invocation_return_error (ctx->invocation,
+                                               MM_CORE_ERROR,
+                                               MM_CORE_ERROR_WRONG_STATE,
+                                               "Cannot set SUPL server: "
+                                               "device not yet enabled");
+        handle_set_supl_server_context_free (ctx);
+        return;
+    }
+
+    /* If A-GPS is NOT supported, set error */
+    if (!(mm_gdbus_modem_location_get_capabilities (ctx->skeleton) & MM_MODEM_LOCATION_SOURCE_AGPS)) {
+        g_dbus_method_invocation_return_error (ctx->invocation,
+                                               MM_CORE_ERROR,
+                                               MM_CORE_ERROR_UNSUPPORTED,
+                                               "Cannot set SUPL server: A-GPS not supported");
+        handle_set_supl_server_context_free (ctx);
+        return;
+    }
+
+    /* Check if plugin implements it */
+    if (!MM_IFACE_MODEM_LOCATION_GET_INTERFACE (self)->set_supl_server ||
+        !MM_IFACE_MODEM_LOCATION_GET_INTERFACE (self)->set_supl_server_finish) {
+        g_dbus_method_invocation_return_error (ctx->invocation,
+                                               MM_CORE_ERROR,
+                                               MM_CORE_ERROR_UNSUPPORTED,
+                                               "Cannot set SUPL server: not implemented");
+        handle_set_supl_server_context_free (ctx);
+        return;
+    }
+
+    /* Request to change SUPL server */
+    MM_IFACE_MODEM_LOCATION_GET_INTERFACE (self)->set_supl_server (ctx->self,
+                                                                   ctx->supl,
+                                                                   (GAsyncReadyCallback)set_supl_server_ready,
+                                                                   ctx);
+}
+
+static gboolean
+handle_set_supl_server (MmGdbusModemLocation *skeleton,
+                        GDBusMethodInvocation *invocation,
+                        const gchar *supl,
+                        MMIfaceModemLocation *self)
+{
+    HandleSetSuplServerContext *ctx;
+
+    ctx = g_slice_new (HandleSetSuplServerContext);
+    ctx->skeleton = g_object_ref (skeleton);
+    ctx->invocation = g_object_ref (invocation);
+    ctx->self = g_object_ref (self);
+    ctx->supl = g_strdup (supl);
+
+    mm_base_modem_authorize (MM_BASE_MODEM (self),
+                             invocation,
+                             MM_AUTHORIZATION_DEVICE_CONTROL,
+                             (GAsyncReadyCallback)handle_set_supl_server_auth_ready,
+                             ctx);
+    return TRUE;
+}
+
+/*****************************************************************************/
+
+typedef struct {
+    MmGdbusModemLocation *skeleton;
+    GDBusMethodInvocation *invocation;
+    MMIfaceModemLocation *self;
+    guint rate;
+} HandleSetGpsRefreshRateContext;
+
+static void
+handle_set_gps_refresh_rate_context_free (HandleSetGpsRefreshRateContext *ctx)
+{
+    g_object_unref (ctx->skeleton);
+    g_object_unref (ctx->invocation);
+    g_object_unref (ctx->self);
+    g_slice_free (HandleSetGpsRefreshRateContext, ctx);
+}
+
+static void
+handle_set_gps_refresh_rate_auth_ready (MMBaseModem *self,
+                                        GAsyncResult *res,
+                                        HandleSetGpsRefreshRateContext *ctx)
+{
+    GError *error = NULL;
+    MMModemState modem_state;
+
+    if (!mm_base_modem_authorize_finish (self, res, &error)) {
+        g_dbus_method_invocation_take_error (ctx->invocation, error);
+        handle_set_gps_refresh_rate_context_free (ctx);
+        return;
+    }
+
+    modem_state = MM_MODEM_STATE_UNKNOWN;
+    g_object_get (self,
+                  MM_IFACE_MODEM_STATE, &modem_state,
+                  NULL);
+    if (modem_state < MM_MODEM_STATE_ENABLED) {
+        g_dbus_method_invocation_return_error (ctx->invocation,
+                                               MM_CORE_ERROR,
+                                               MM_CORE_ERROR_WRONG_STATE,
+                                               "Cannot set SUPL server: "
+                                               "device not yet enabled");
+        handle_set_gps_refresh_rate_context_free (ctx);
+        return;
+    }
+
+    /* If GPS is NOT supported, set error */
+    if (!(mm_gdbus_modem_location_get_capabilities (ctx->skeleton) & ((MM_MODEM_LOCATION_SOURCE_GPS_RAW |
+                                                                       MM_MODEM_LOCATION_SOURCE_GPS_NMEA)))) {
+        g_dbus_method_invocation_return_error (ctx->invocation,
+                                               MM_CORE_ERROR,
+                                               MM_CORE_ERROR_UNSUPPORTED,
+                                               "Cannot set GPS refresh rate: GPS not supported");
+        handle_set_gps_refresh_rate_context_free (ctx);
+        return;
+    }
+
+    /* Set the new rate in the interface */
+    mm_gdbus_modem_location_set_gps_refresh_rate (ctx->skeleton, ctx->rate);
+    mm_gdbus_modem_location_complete_set_gps_refresh_rate (ctx->skeleton, ctx->invocation);
+    handle_set_gps_refresh_rate_context_free (ctx);
+}
+
+static gboolean
+handle_set_gps_refresh_rate (MmGdbusModemLocation *skeleton,
+                             GDBusMethodInvocation *invocation,
+                             guint rate,
+                             MMIfaceModemLocation *self)
+{
+    HandleSetGpsRefreshRateContext *ctx;
+
+    ctx = g_slice_new (HandleSetGpsRefreshRateContext);
+    ctx->skeleton = g_object_ref (skeleton);
+    ctx->invocation = g_object_ref (invocation);
+    ctx->self = g_object_ref (self);
+    ctx->rate = rate;
+
+    mm_base_modem_authorize (MM_BASE_MODEM (self),
+                             invocation,
+                             MM_AUTHORIZATION_DEVICE_CONTROL,
+                             (GAsyncReadyCallback)handle_set_gps_refresh_rate_auth_ready,
                              ctx);
     return TRUE;
 }
@@ -1162,7 +1384,10 @@ interface_enabling_step (EnablingContext *ctx)
 
         /* By default, we'll enable all NON-GPS sources */
         default_sources = mm_gdbus_modem_location_get_capabilities (ctx->skeleton);
-        default_sources &= ~(MM_MODEM_LOCATION_SOURCE_GPS_RAW | MM_MODEM_LOCATION_SOURCE_GPS_NMEA);
+        default_sources &= ~(MM_MODEM_LOCATION_SOURCE_GPS_RAW |
+                             MM_MODEM_LOCATION_SOURCE_GPS_NMEA |
+                             MM_MODEM_LOCATION_SOURCE_GPS_UNMANAGED |
+                             MM_MODEM_LOCATION_SOURCE_AGPS);
 
         setup_gathering (ctx->self,
                          default_sources,
@@ -1221,6 +1446,8 @@ typedef enum {
     INITIALIZATION_STEP_FIRST,
     INITIALIZATION_STEP_CAPABILITIES,
     INITIALIZATION_STEP_VALIDATE_CAPABILITIES,
+    INITIALIZATION_STEP_SUPL_SERVER,
+    INITIALIZATION_STEP_GPS_REFRESH_RATE,
     INITIALIZATION_STEP_LAST
 } InitializationStep;
 
@@ -1256,6 +1483,28 @@ initialization_context_complete_and_free_if_cancelled (InitializationContext *ct
                                      "Interface initialization cancelled");
     initialization_context_complete_and_free (ctx);
     return TRUE;
+}
+
+static void
+load_supl_server_ready (MMIfaceModemLocation *self,
+                        GAsyncResult *res,
+                        InitializationContext *ctx)
+{
+    GError *error = NULL;
+    gchar *supl;
+
+    supl = MM_IFACE_MODEM_LOCATION_GET_INTERFACE (self)->load_supl_server_finish (self, res, &error);
+    if (error) {
+        mm_warn ("couldn't load SUPL server: '%s'", error->message);
+        g_error_free (error);
+    }
+
+    mm_gdbus_modem_location_set_supl_server (ctx->skeleton, supl ? supl : "");
+    g_free (supl);
+
+    /* Go on to next step */
+    ctx->step++;
+    interface_initialization_step (ctx);
 }
 
 static void
@@ -1320,6 +1569,30 @@ interface_initialization_step (InitializationContext *ctx)
         /* Fall down to next step */
         ctx->step++;
 
+    case INITIALIZATION_STEP_SUPL_SERVER:
+        /* If the modem supports A-GPS, load SUPL server */
+        if (ctx->capabilities & MM_MODEM_LOCATION_SOURCE_AGPS &&
+            MM_IFACE_MODEM_LOCATION_GET_INTERFACE (ctx->self)->load_supl_server &&
+            MM_IFACE_MODEM_LOCATION_GET_INTERFACE (ctx->self)->load_supl_server_finish) {
+            MM_IFACE_MODEM_LOCATION_GET_INTERFACE (ctx->self)->load_supl_server (
+                ctx->self,
+                (GAsyncReadyCallback)load_supl_server_ready,
+                ctx);
+            return;
+        }
+        /* Fall down to next step */
+        ctx->step++;
+
+    case INITIALIZATION_STEP_GPS_REFRESH_RATE:
+        /* If we have GPS capabilities, expose the GPS refresh rate */
+        if (ctx->capabilities & ((MM_MODEM_LOCATION_SOURCE_GPS_RAW |
+                                  MM_MODEM_LOCATION_SOURCE_GPS_NMEA)))
+            /* Set the default rate in the interface */
+            mm_gdbus_modem_location_set_gps_refresh_rate (ctx->skeleton, MM_LOCATION_GPS_REFRESH_TIME_SECS);
+
+        /* Fall down to next step */
+        ctx->step++;
+
     case INITIALIZATION_STEP_LAST:
         /* We are done without errors! */
 
@@ -1327,6 +1600,14 @@ interface_initialization_step (InitializationContext *ctx)
         g_signal_connect (ctx->skeleton,
                           "handle-setup",
                           G_CALLBACK (handle_setup),
+                          ctx->self);
+        g_signal_connect (ctx->skeleton,
+                          "handle-set-supl-server",
+                          G_CALLBACK (handle_set_supl_server),
+                          ctx->self);
+        g_signal_connect (ctx->skeleton,
+                          "handle-set-gps-refresh-rate",
+                          G_CALLBACK (handle_set_gps_refresh_rate),
                           ctx->self);
         g_signal_connect (ctx->skeleton,
                           "handle-get-location",

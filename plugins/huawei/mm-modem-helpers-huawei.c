@@ -42,8 +42,8 @@ mm_huawei_parse_ndisstatqry_response (const gchar *response,
     GError *inner_error = NULL;
 
     if (!response ||
-        !(g_str_has_prefix (response, "^NDISSTAT:") ||
-          g_str_has_prefix (response, "^NDISSTATQRY:"))) {
+        !(g_ascii_strncasecmp (response, "^NDISSTAT:", strlen ("^NDISSTAT:")) == 0 ||
+          g_ascii_strncasecmp (response, "^NDISSTATQRY:", strlen ("^NDISSTATQRY:")) == 0)) {
         g_set_error (error, MM_CORE_ERROR, MM_CORE_ERROR_FAILED, "Missing ^NDISSTAT / ^NDISSTATQRY prefix");
         return FALSE;
     }
@@ -61,47 +61,81 @@ mm_huawei_parse_ndisstatqry_response (const gchar *response,
      * Or, in newer firmwares:
      *     ^NDISSTATQRY:0,,,"IPV4",0,,,"IPV6"
      *     OK
+     *
+     * Or, even (handled separately):
+     *     ^NDISSTATQry:1
+     *     OK
      */
-    r = g_regex_new ("\\^NDISSTAT(?:QRY)?:\\s*(\\d),([^,]*),([^,]*),([^,\\r\\n]*)(?:\\r\\n)?"
-                     "(?:\\^NDISSTAT:|\\^NDISSTATQRY:)?\\s*,?(\\d)?,?([^,]*)?,?([^,]*)?,?([^,\\r\\n]*)?(?:\\r\\n)?",
-                     G_REGEX_DOLLAR_ENDONLY | G_REGEX_RAW,
-                     0, NULL);
-    g_assert (r != NULL);
 
-    g_regex_match_full (r, response, strlen (response), 0, 0, &match_info, &inner_error);
-    if (!inner_error && g_match_info_matches (match_info)) {
-        guint ip_type_field = 4;
+    /* If multiple fields available, try first parsing method */
+    if (strchr (response, ',')) {
+        r = g_regex_new ("\\^NDISSTAT(?:QRY)?(?:Qry)?:\\s*(\\d),([^,]*),([^,]*),([^,\\r\\n]*)(?:\\r\\n)?"
+                         "(?:\\^NDISSTAT:|\\^NDISSTATQRY:)?\\s*,?(\\d)?,?([^,]*)?,?([^,]*)?,?([^,\\r\\n]*)?(?:\\r\\n)?",
+                         G_REGEX_DOLLAR_ENDONLY | G_REGEX_RAW,
+                         0, NULL);
+        g_assert (r != NULL);
 
-        /* IPv4 and IPv6 are fields 4 and (if available) 8 */
+        g_regex_match_full (r, response, strlen (response), 0, 0, &match_info, &inner_error);
+        if (!inner_error && g_match_info_matches (match_info)) {
+            guint ip_type_field = 4;
 
-        while (!inner_error && ip_type_field <= 8) {
-            gchar *ip_type_str;
+            /* IPv4 and IPv6 are fields 4 and (if available) 8 */
+
+            while (!inner_error && ip_type_field <= 8) {
+                gchar *ip_type_str;
+                guint connected;
+
+                ip_type_str = mm_get_string_unquoted_from_match_info (match_info, ip_type_field);
+                if (!ip_type_str)
+                    break;
+
+                if (!mm_get_uint_from_match_info (match_info, (ip_type_field - 3), &connected) ||
+                    (connected != 0 && connected != 1)) {
+                    inner_error = g_error_new (MM_CORE_ERROR,
+                                               MM_CORE_ERROR_FAILED,
+                                               "Couldn't parse ^NDISSTAT / ^NDISSTATQRY fields");
+                } else if (g_ascii_strcasecmp (ip_type_str, "IPV4") == 0) {
+                    *ipv4_available = TRUE;
+                    *ipv4_connected = (gboolean)connected;
+                } else if (g_ascii_strcasecmp (ip_type_str, "IPV6") == 0) {
+                    *ipv6_available = TRUE;
+                    *ipv6_connected = (gboolean)connected;
+                }
+
+                g_free (ip_type_str);
+                ip_type_field += 4;
+            }
+        }
+
+        g_match_info_free (match_info);
+        g_regex_unref (r);
+    }
+    /* No separate IPv4/IPv6 info given just connected/not connected */
+    else {
+        r = g_regex_new ("\\^NDISSTAT(?:QRY)?(?:Qry)?:\\s*(\\d)(?:\\r\\n)?",
+                         G_REGEX_DOLLAR_ENDONLY | G_REGEX_RAW,
+                         0, NULL);
+        g_assert (r != NULL);
+
+        g_regex_match_full (r, response, strlen (response), 0, 0, &match_info, &inner_error);
+        if (!inner_error && g_match_info_matches (match_info)) {
             guint connected;
 
-            ip_type_str = mm_get_string_unquoted_from_match_info (match_info, ip_type_field);
-            if (!ip_type_str)
-                break;
-
-            if (!mm_get_uint_from_match_info (match_info, (ip_type_field - 3), &connected) ||
+            if (!mm_get_uint_from_match_info (match_info, 1, &connected) ||
                 (connected != 0 && connected != 1)) {
                 inner_error = g_error_new (MM_CORE_ERROR,
                                            MM_CORE_ERROR_FAILED,
                                            "Couldn't parse ^NDISSTAT / ^NDISSTATQRY fields");
-            } else if (g_ascii_strcasecmp (ip_type_str, "IPV4") == 0) {
+            } else {
+                /* We'll assume IPv4 */
                 *ipv4_available = TRUE;
                 *ipv4_connected = (gboolean)connected;
-            } else if (g_ascii_strcasecmp (ip_type_str, "IPV6") == 0) {
-                *ipv6_available = TRUE;
-                *ipv6_connected = (gboolean)connected;
             }
-
-            g_free (ip_type_str);
-            ip_type_field += 4;
         }
-    }
 
-    g_match_info_free (match_info);
-    g_regex_unref (r);
+        g_match_info_free (match_info);
+        g_regex_unref (r);
+    }
 
     if (!ipv4_available && !ipv6_available) {
         inner_error = g_error_new (MM_CORE_ERROR,
@@ -115,6 +149,118 @@ mm_huawei_parse_ndisstatqry_response (const gchar *response,
     }
 
     return TRUE;
+}
+
+/*****************************************************************************/
+/* ^DHCP response parser */
+
+static gboolean
+match_info_to_ip4_addr (GMatchInfo *match_info,
+                        guint match_index,
+                        guint *out_addr)
+{
+    gchar *s, *bin = NULL;
+    gchar buf[9];
+    gsize len, bin_len;
+    gboolean success = FALSE;
+
+    s = g_match_info_fetch (match_info, match_index);
+    g_return_val_if_fail (s != NULL, FALSE);
+
+    len = strlen (s);
+    if (len == 1 && s[0] == '0') {
+        *out_addr = 0;
+        success = TRUE;
+        goto done;
+    }
+    if (len < 7 || len > 8)
+        goto done;
+
+    /* Handle possibly missing leading zero */
+    memset (buf, 0, sizeof (buf));
+    if (len == 7) {
+        strcpy (&buf[1], s);
+        buf[0] = '0';
+    } else if (len == 8)
+        strcpy (buf, s);
+    else
+        g_assert_not_reached ();
+
+    bin = mm_utils_hexstr2bin (buf, &bin_len);
+    if (!bin || bin_len != 4)
+        goto done;
+
+    *out_addr = GUINT32_SWAP_LE_BE (*((guint32 *) bin));
+    success = TRUE;
+
+done:
+    g_free (s);
+    g_free (bin);
+    return success;
+}
+
+gboolean
+mm_huawei_parse_dhcp_response (const char *reply,
+                               guint *out_address,
+                               guint *out_prefix,
+                               guint *out_gateway,
+                               guint *out_dns1,
+                               guint *out_dns2,
+                               GError **error)
+{
+    gboolean matched;
+    GRegex *r;
+    GMatchInfo *match_info = NULL;
+    GError *match_error = NULL;
+
+    g_assert (reply != NULL);
+    g_assert (out_address != NULL);
+    g_assert (out_prefix != NULL);
+    g_assert (out_gateway != NULL);
+    g_assert (out_dns1 != NULL);
+    g_assert (out_dns2 != NULL);
+
+    /* Format:
+     *
+     * ^DHCP: <address>,<netmask>,<gateway>,<?>,<dns1>,<dns2>,<uplink>,<downlink>
+     *
+     * All numbers are hexadecimal representations of IPv4 addresses, with
+     * least-significant byte first.  eg, 192.168.50.32 is expressed as
+     * "2032A8C0".  Sometimes leading zeros are stripped, so "1010A0A" is
+     * actually 10.10.1.1.
+     */
+
+    r = g_regex_new ("\\^DHCP:\\s*([0-9a-fA-F]+),([0-9a-fA-F]+),([0-9a-fA-F]+),([0-9a-fA-F]+),([0-9a-fA-F]+),([0-9a-fA-F]+),.*$", 0, 0, NULL);
+    g_assert (r != NULL);
+
+    matched = g_regex_match_full (r, reply, -1, 0, 0, &match_info, &match_error);
+    if (!matched) {
+        if (match_error) {
+            g_propagate_error (error, match_error);
+            g_prefix_error (error, "Could not parse ^DHCP results: ");
+        } else {
+            g_set_error_literal (error,
+                                 MM_CORE_ERROR,
+                                 MM_CORE_ERROR_FAILED,
+                                 "Couldn't match ^DHCP reply");
+        }
+    } else {
+        guint netmask;
+
+        if (match_info_to_ip4_addr (match_info, 1, out_address) &&
+            match_info_to_ip4_addr (match_info, 2, &netmask) &&
+            match_info_to_ip4_addr (match_info, 3, out_gateway) &&
+            match_info_to_ip4_addr (match_info, 5, out_dns1) &&
+            match_info_to_ip4_addr (match_info, 6, out_dns2)) {
+            *out_prefix = mm_count_bits_set (netmask);
+            matched = TRUE;
+        }
+    }
+
+    if (match_info)
+        g_match_info_free (match_info);
+    g_regex_unref (r);
+    return matched;
 }
 
 /*****************************************************************************/
@@ -1032,4 +1178,154 @@ mm_huawei_parse_syscfgex_response (const gchar *response,
                  str);
     g_strfreev (split);
     return NULL;
+}
+
+/*****************************************************************************/
+/* ^NWTIME response parser */
+
+gboolean mm_huawei_parse_nwtime_response (const gchar *response,
+                                          gchar **iso8601p,
+                                          MMNetworkTimezone **tzp,
+                                          GError **error)
+{
+    GRegex *r;
+    GMatchInfo *match_info = NULL;
+    GError *match_error = NULL;
+    guint year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0, dt = 0;
+    gint tz = 0;
+    gboolean ret = FALSE;
+
+    g_assert (iso8601p || tzp); /* at least one */
+
+    r = g_regex_new ("\\^NWTIME:\\s*(\\d+)/(\\d+)/(\\d+),(\\d+):(\\d+):(\\d*)([\\-\\+\\d]+),(\\d+)$", 0, 0, NULL);
+    g_assert (r != NULL);
+
+    if (!g_regex_match_full (r, response, -1, 0, 0, &match_info, &match_error)) {
+        if (match_error) {
+            g_propagate_error (error, match_error);
+            g_prefix_error (error, "Could not parse ^NWTIME results: ");
+        } else {
+            g_set_error_literal (error,
+                                 MM_CORE_ERROR,
+                                 MM_CORE_ERROR_FAILED,
+                                 "Couldn't match ^NWTIME reply");
+        }
+    } else {
+        /* Remember that g_match_info_get_match_count() includes match #0 */
+        g_assert (g_match_info_get_match_count (match_info) >= 9);
+
+        if (mm_get_uint_from_match_info (match_info, 1, &year) &&
+            mm_get_uint_from_match_info (match_info, 2, &month) &&
+            mm_get_uint_from_match_info (match_info, 3, &day) &&
+            mm_get_uint_from_match_info (match_info, 4, &hour) &&
+            mm_get_uint_from_match_info (match_info, 5, &minute) &&
+            mm_get_uint_from_match_info (match_info, 6, &second) &&
+            mm_get_int_from_match_info  (match_info, 7, &tz) &&
+            mm_get_uint_from_match_info (match_info, 8, &dt)) {
+            /* adjust year */
+            if (year < 100)
+                year += 2000;
+            /*
+             * tz = timezone offset in 15 minute intervals
+             * dt = daylight adjustment, 0 = none, 1 = 1 hour, 2 = 2 hours
+             *      other values are marked reserved.
+             */
+            if (iso8601p) {
+                /* Return ISO-8601 format date/time string */
+                *iso8601p = mm_new_iso8601_time (year, month, day, hour,
+                                                 minute, second,
+                                                 TRUE, (tz * 15) + (dt * 60));
+            }
+            if (tzp) {
+                *tzp = mm_network_timezone_new ();
+                mm_network_timezone_set_offset (*tzp, tz * 15);
+                mm_network_timezone_set_dst_offset (*tzp, dt * 60);
+            }
+
+            ret = TRUE;
+        } else {
+            g_set_error_literal (error,
+                                 MM_CORE_ERROR,
+                                 MM_CORE_ERROR_FAILED,
+                                 "Failed to parse ^NWTIME reply");
+        }
+    }
+
+    if (match_info)
+        g_match_info_free (match_info);
+    g_regex_unref (r);
+
+    return ret;
+}
+
+/*****************************************************************************/
+/* ^TIME response parser */
+
+gboolean mm_huawei_parse_time_response (const gchar *response,
+                                        gchar **iso8601p,
+                                        MMNetworkTimezone **tzp,
+                                        GError **error)
+{
+    GRegex *r;
+    GMatchInfo *match_info = NULL;
+    GError *match_error = NULL;
+    guint year, month, day, hour, minute, second;
+    gboolean ret = FALSE;
+
+    g_assert (iso8601p || tzp); /* at least one */
+
+    /* TIME response cannot ever provide TZ info */
+    if (tzp) {
+        g_set_error_literal (error,
+                             MM_CORE_ERROR,
+                             MM_CORE_ERROR_UNSUPPORTED,
+                             "^TIME does not provide timezone information");
+        return FALSE;
+    }
+
+    /* Already in ISO-8601 format, but verify just to be sure */
+    r = g_regex_new ("\\^TIME:\\s*(\\d+)/(\\d+)/(\\d+)\\s*(\\d+):(\\d+):(\\d*)$", 0, 0, NULL);
+    g_assert (r != NULL);
+
+    if (!g_regex_match_full (r, response, -1, 0, 0, &match_info, &match_error)) {
+        if (match_error) {
+            g_propagate_error (error, match_error);
+            g_prefix_error (error, "Could not parse ^TIME results: ");
+        } else {
+            g_set_error_literal (error,
+                                 MM_CORE_ERROR,
+                                 MM_CORE_ERROR_FAILED,
+                                 "Couldn't match ^TIME reply");
+        }
+    } else {
+        /* Remember that g_match_info_get_match_count() includes match #0 */
+        g_assert (g_match_info_get_match_count (match_info) >= 7);
+
+        if (mm_get_uint_from_match_info (match_info, 1, &year) &&
+            mm_get_uint_from_match_info (match_info, 2, &month) &&
+            mm_get_uint_from_match_info (match_info, 3, &day) &&
+            mm_get_uint_from_match_info (match_info, 4, &hour) &&
+            mm_get_uint_from_match_info (match_info, 5, &minute) &&
+            mm_get_uint_from_match_info (match_info, 6, &second)) {
+            /* adjust year */
+            if (year < 100)
+                year += 2000;
+            /* Return ISO-8601 format date/time string */
+            if (iso8601p)
+                *iso8601p = mm_new_iso8601_time (year, month, day, hour,
+                                                 minute, second, FALSE, 0);
+            ret = TRUE;
+        } else {
+            g_set_error_literal (error,
+                                 MM_CORE_ERROR,
+                                 MM_CORE_ERROR_FAILED,
+                                 "Failed to parse ^TIME reply");
+        }
+    }
+
+    if (match_info)
+        g_match_info_free (match_info);
+    g_regex_unref (r);
+
+    return ret;
 }

@@ -293,6 +293,7 @@ typedef enum { /*< underscore_name=mm_modem_mode >*/
  * @MM_MODEM_BAND_EUTRAN_XLI: E-UTRAN band XLI.
  * @MM_MODEM_BAND_EUTRAN_XLII: E-UTRAN band XLII.
  * @MM_MODEM_BAND_EUTRAN_XLIII: E-UTRAN band XLIII.
+ * @MM_MODEM_BAND_EUTRAN_XLIV: E-UTRAN band XLIV.
  * @MM_MODEM_BAND_CDMA_BC0_CELLULAR_800: CDMA Band Class 0 (US Cellular 850MHz).
  * @MM_MODEM_BAND_CDMA_BC1_PCS_1900: CDMA Band Class 1 (US PCS 1900MHz).
  * @MM_MODEM_BAND_CDMA_BC2_TACS: CDMA Band Class 2 (UK TACS 900MHz).
@@ -369,6 +370,7 @@ typedef enum { /*< underscore_name=mm_modem_band >*/
     MM_MODEM_BAND_EUTRAN_XLI     = 71,
     MM_MODEM_BAND_EUTRAN_XLII    = 72,
     MM_MODEM_BAND_EUTRAN_XLIII   = 73,
+    MM_MODEM_BAND_EUTRAN_XLIV    = 74,
     /* CDMA Band Classes (see 3GPP2 C.S0057-C) */
     MM_MODEM_BAND_CDMA_BC0_CELLULAR_800   = 128,
     MM_MODEM_BAND_CDMA_BC1_PCS_1900       = 129,
@@ -816,15 +818,19 @@ typedef enum { /*< underscore_name=mm_sms_cdma_service_category >*/
  * @MM_MODEM_LOCATION_SOURCE_GPS_RAW: GPS location given by predefined keys.
  * @MM_MODEM_LOCATION_SOURCE_GPS_NMEA: GPS location given as NMEA traces.
  * @MM_MODEM_LOCATION_SOURCE_CDMA_BS: CDMA base station position.
+ * @MM_MODEM_LOCATION_SOURCE_GPS_UNMANAGED: No location given, just GPS module setup.
+ * @MM_MODEM_LOCATION_SOURCE_AGPS: A-GPS location requested.
  *
  * Sources of location information supported by the modem.
  */
 typedef enum { /*< underscore_name=mm_modem_location_source >*/
-    MM_MODEM_LOCATION_SOURCE_NONE        = 0,
-    MM_MODEM_LOCATION_SOURCE_3GPP_LAC_CI = 1 << 0,
-    MM_MODEM_LOCATION_SOURCE_GPS_RAW     = 1 << 1,
-    MM_MODEM_LOCATION_SOURCE_GPS_NMEA    = 1 << 2,
-    MM_MODEM_LOCATION_SOURCE_CDMA_BS     = 1 << 3,
+    MM_MODEM_LOCATION_SOURCE_NONE          = 0,
+    MM_MODEM_LOCATION_SOURCE_3GPP_LAC_CI   = 1 << 0,
+    MM_MODEM_LOCATION_SOURCE_GPS_RAW       = 1 << 1,
+    MM_MODEM_LOCATION_SOURCE_GPS_NMEA      = 1 << 2,
+    MM_MODEM_LOCATION_SOURCE_CDMA_BS       = 1 << 3,
+    MM_MODEM_LOCATION_SOURCE_GPS_UNMANAGED = 1 << 4,
+    MM_MODEM_LOCATION_SOURCE_AGPS          = 1 << 5,
 } MMModemLocationSource;
 
 /**
@@ -846,9 +852,19 @@ typedef enum { /*< underscore_name=mm_modem_contacts_storage >*/
 /**
  * MMBearerIpMethod:
  * @MM_BEARER_IP_METHOD_UNKNOWN: Unknown method.
- * @MM_BEARER_IP_METHOD_PPP: Use PPP to get the address.
- * @MM_BEARER_IP_METHOD_STATIC: Use the provided static IP configuration given by the modem to configure the IP data interface.
- * @MM_BEARER_IP_METHOD_DHCP: Begin DHCP on the data interface to obtain necessary IP configuration details.
+ * @MM_BEARER_IP_METHOD_PPP: Use PPP to get IP addresses and DNS information.
+ * For IPv6, use PPP to retrieve the 64-bit Interface Identifier, use the IID to
+ * construct an IPv6 link-local address by following RFC 5072, and then run
+ * DHCP over the PPP link to retrieve DNS settings.
+ * @MM_BEARER_IP_METHOD_STATIC: Use the provided static IP configuration given
+ * by the modem to configure the IP data interface.  Note that DNS servers may
+ * not be provided by the network or modem firmware.
+ * @MM_BEARER_IP_METHOD_DHCP: Begin DHCP or IPv6 SLAAC on the data interface to
+ * obtain any necessary IP configuration details that are not already provided
+ * by the IP configuration.  For IPv4 bearers DHCP should be used.  For IPv6
+ * bearers SLAAC should be used, and the IP configuration may already contain
+ * a link-local address that should be assigned to the interface before SLAAC
+ * is started to obtain the rest of the configuration.
  *
  * Type of IP method configuration to be used in a given Bearer.
  */
@@ -1157,5 +1173,61 @@ typedef enum { /*< underscore_name=mm_oma_session_state_failed_reason >*/
     MM_OMA_SESSION_STATE_FAILED_REASON_MAX_RETRY_EXCEEDED    = 4,
     MM_OMA_SESSION_STATE_FAILED_REASON_SESSION_CANCELLED     = 5
 } MMOmaSessionStateFailedReason;
+
+/**
+ * MMCallState:
+ * @MM_CALL_STATE_UNKNOWN: default state for a new outgoing call.
+ * @MM_CALL_STATE_DIALING: outgoing call started. Wait for free channel.
+ * @MM_CALL_STATE_RINGING_IN: outgoing call attached to GSM network, waiting for an answer.
+ * @MM_CALL_STATE_RINGING_OUT: incoming call is waiting for an answer.
+ * @MM_CALL_STATE_ACTIVE: call is active between two peers.
+ * @MM_CALL_STATE_HELD: held call (by +CHLD AT command).
+ * @MM_CALL_STATE_WAITING: waiting call (by +CCWA AT command).
+ * @MM_CALL_STATE_TERMINATED: call is terminated.
+ *
+ * State of Call
+ */
+typedef enum { /*< underscore_name=mm_call_state >*/
+    MM_CALL_STATE_UNKNOWN       = 0,
+    MM_CALL_STATE_DIALING       = 1,
+    MM_CALL_STATE_RINGING_OUT   = 2,
+    MM_CALL_STATE_RINGING_IN    = 3,
+    MM_CALL_STATE_ACTIVE        = 4,
+    MM_CALL_STATE_HELD          = 5,
+    MM_CALL_STATE_WAITING       = 6,
+    MM_CALL_STATE_TERMINATED    = 7
+} MMCallState;
+
+/**
+ * MMCallStateReason:
+ * @MM_CALL_STATE_REASON_UNKNOWN: Default value for a new outgoing call.
+ * @MM_CALL_STATE_REASON_OUTGOING_STARTED: Outgoing call is started.
+ * @MM_CALL_STATE_REASON_INCOMING_NEW: Received a new incoming call.
+ * @MM_CALL_STATE_REASON_ACCEPTED: Dialing or Ringing call is accepted.
+ * @MM_CALL_STATE_REASON_TERMINATED: Call is correctly terminated.
+ * @MM_CALL_STATE_REASON_REFUSED_OR_BUSY: Remote peer is busy or refused call
+ * @MM_CALL_STATE_REASON_ERROR: Wrong number or generic network error.
+ */
+typedef enum { /*< underscore_name=mm_call_state_reason >*/
+    MM_CALL_STATE_REASON_UNKNOWN            = 0,
+    MM_CALL_STATE_REASON_OUTGOING_STARTED   = 1,
+    MM_CALL_STATE_REASON_INCOMING_NEW       = 2,
+    MM_CALL_STATE_REASON_ACCEPTED           = 3,
+    MM_CALL_STATE_REASON_TERMINATED         = 4,
+    MM_CALL_STATE_REASON_REFUSED_OR_BUSY    = 5,
+    MM_CALL_STATE_REASON_ERROR              = 6
+} MMCallStateReason;
+
+/**
+ * MMCallDirection:
+ * @MM_CALL_DIRECTION_UNKNOWN: unknown.
+ * @MM_CALL_DIRECTION_INCOMING: call from network.
+ * @MM_CALL_DIRECTION_OUTGOING: call to network.
+ */
+typedef enum { /*< underscore_name=mm_call_direction >*/
+    MM_CALL_DIRECTION_UNKNOWN   = 0,
+    MM_CALL_DIRECTION_INCOMING  = 1,
+    MM_CALL_DIRECTION_OUTGOING  = 2
+} MMCallDirection;
 
 #endif /*  _MODEMMANAGER_ENUMS_H_ */

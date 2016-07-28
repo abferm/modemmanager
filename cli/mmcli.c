@@ -4,7 +4,7 @@
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
+ * the Free Software Foundation, either version 2 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -96,32 +96,32 @@ log_handler (const gchar *log_domain,
              gpointer user_data)
 {
     const gchar *log_level_str;
-	time_t now;
-	gchar time_str[64];
-	struct tm    *local_time;
+    time_t now;
+    gchar time_str[64];
+    struct tm    *local_time;
 
-	now = time ((time_t *) NULL);
-	local_time = localtime (&now);
-	strftime (time_str, 64, "%d %b %Y, %H:%M:%S", local_time);
+    now = time ((time_t *) NULL);
+    local_time = localtime (&now);
+    strftime (time_str, 64, "%d %b %Y, %H:%M:%S", local_time);
 
-	switch (log_level) {
-	case G_LOG_LEVEL_WARNING:
-		log_level_str = "-Warning **";
-		break;
+    switch (log_level) {
+    case G_LOG_LEVEL_WARNING:
+        log_level_str = "-Warning **";
+        break;
 
-	case G_LOG_LEVEL_CRITICAL:
+    case G_LOG_LEVEL_CRITICAL:
     case G_LOG_FLAG_FATAL:
-	case G_LOG_LEVEL_ERROR:
-		log_level_str = "-Error **";
-		break;
+    case G_LOG_LEVEL_ERROR:
+        log_level_str = "-Error **";
+        break;
 
-	case G_LOG_LEVEL_DEBUG:
-		log_level_str = "[Debug]";
-		break;
+    case G_LOG_LEVEL_DEBUG:
+        log_level_str = "[Debug]";
+        break;
 
     default:
-		log_level_str = "";
-		break;
+        log_level_str = "";
+        break;
     }
 
     g_print ("[%s] %s %s\n", time_str, log_level_str, message);
@@ -132,7 +132,7 @@ print_version_and_exit (void)
 {
     g_print ("\n"
              PROGRAM_NAME " " PROGRAM_VERSION "\n"
-             "Copyright (2011) Aleksander Morgado\n"
+             "Copyright (2011 - 2016) Aleksander Morgado\n"
              "License GPLv2+: GNU GPL version 2 or later <http://gnu.org/licenses/gpl-2.0.html>\n"
              "This is free software: you are free to change and redistribute it.\n"
              "There is NO WARRANTY, to the extent permitted by law.\n"
@@ -188,39 +188,43 @@ main (gint argc, gchar **argv)
 
     /* Setup option context, process it and destroy it */
     context = g_option_context_new ("- Control and monitor the ModemManager");
-	g_option_context_add_group (context,
-	                            mmcli_manager_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_manager_get_option_group ());
     g_option_context_add_group (context,
                                 mmcli_get_common_option_group ());
-	g_option_context_add_group (context,
-	                            mmcli_modem_get_option_group ());
-	g_option_context_add_group (context,
-	                            mmcli_modem_3gpp_get_option_group ());
-	g_option_context_add_group (context,
-	                            mmcli_modem_cdma_get_option_group ());
-	g_option_context_add_group (context,
-	                            mmcli_modem_simple_get_option_group ());
-	g_option_context_add_group (context,
-	                            mmcli_modem_location_get_option_group ());
-	g_option_context_add_group (context,
-	                            mmcli_modem_messaging_get_option_group ());
-	g_option_context_add_group (context,
-	                            mmcli_modem_time_get_option_group ());
-	g_option_context_add_group (context,
-	                            mmcli_modem_firmware_get_option_group ());
-	g_option_context_add_group (context,
-	                            mmcli_modem_signal_get_option_group ());
-	g_option_context_add_group (context,
-	                            mmcli_modem_oma_get_option_group ());
-	g_option_context_add_group (context,
-	                            mmcli_sim_get_option_group ());
-	g_option_context_add_group (context,
-	                            mmcli_bearer_get_option_group ());
-	g_option_context_add_group (context,
-	                            mmcli_sms_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_modem_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_modem_3gpp_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_modem_cdma_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_modem_simple_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_modem_location_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_modem_messaging_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_modem_voice_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_modem_time_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_modem_firmware_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_modem_signal_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_modem_oma_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_sim_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_bearer_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_sms_get_option_group ());
+    g_option_context_add_group (context,
+                                mmcli_call_get_option_group ());
     g_option_context_add_main_entries (context, main_entries, NULL);
     g_option_context_parse (context, &argc, &argv, NULL);
-	g_option_context_free (context);
+    g_option_context_free (context);
 
     if (version_flag)
         print_version_and_exit ();
@@ -280,6 +284,13 @@ main (gint argc, gchar **argv)
         else
             mmcli_sms_run_synchronous (connection);
     }
+    /* Call options? */
+    else if (mmcli_call_options_enabled ()) {
+        if (async_flag)
+            mmcli_call_run_asynchronous (connection, cancellable);
+        else
+            mmcli_call_run_synchronous (connection);
+    }
     /* Modem 3GPP options? */
     else if (mmcli_modem_3gpp_options_enabled ()) {
         if (async_flag)
@@ -314,6 +325,13 @@ main (gint argc, gchar **argv)
             mmcli_modem_messaging_run_asynchronous (connection, cancellable);
         else
             mmcli_modem_messaging_run_synchronous (connection);
+    }
+    /* Voice options? */
+    else if (mmcli_modem_voice_options_enabled ()) {
+        if (async_flag)
+            mmcli_modem_voice_run_asynchronous (connection, cancellable);
+        else
+            mmcli_modem_voice_run_synchronous (connection);
     }
     /* Modem Time options? */
     else if (mmcli_modem_time_options_enabled ()) {
@@ -375,6 +393,8 @@ main (gint argc, gchar **argv)
         mmcli_modem_location_shutdown ();
     } else if (mmcli_modem_messaging_options_enabled ()) {
         mmcli_modem_messaging_shutdown ();
+    } else if (mmcli_modem_voice_options_enabled ()) {
+           mmcli_modem_voice_shutdown ();
     } else if (mmcli_modem_time_options_enabled ()) {
         mmcli_modem_time_shutdown ();
     } else if (mmcli_modem_firmware_options_enabled ()) {
@@ -389,6 +409,8 @@ main (gint argc, gchar **argv)
         mmcli_bearer_shutdown ();
     }  else if (mmcli_sms_options_enabled ()) {
         mmcli_sms_shutdown ();
+    }  else if (mmcli_call_options_enabled ()) {
+        mmcli_call_shutdown ();
     } else if (mmcli_modem_options_enabled ()) {
         mmcli_modem_shutdown ();
     }

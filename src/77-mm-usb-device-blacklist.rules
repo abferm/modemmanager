@@ -88,6 +88,12 @@ ATTRS{idVendor}=="1b4f", ATTRS{idProduct}=="9208", ENV{ID_MM_DEVICE_IGNORE}="1"
 ATTRS{idVendor}=="239a", ATTRS{idProduct}=="0004", ENV{ID_MM_DEVICE_IGNORE}="1"
 ATTRS{idVendor}=="239a", ATTRS{idProduct}=="8004", ENV{ID_MM_DEVICE_IGNORE}="1"
 
+# All devices from Pololu Corporation
+# except some possible future products.
+ATTRS{idVendor}=="1ffb", ENV{ID_MM_DEVICE_IGNORE}="1"
+ATTRS{idVendor}=="1ffb", ATTRS{idProduct}=="00ad", ENV{ID_MM_DEVICE_IGNORE}="0"
+ATTRS{idVendor}=="1ffb", ATTRS{idProduct}=="00ae", ENV{ID_MM_DEVICE_IGNORE}="0"
+
 # Altair U-Boot device
 ATTRS{idVendor}=="0216", ATTRS{idProduct}=="0051", ENV{ID_MM_DEVICE_IGNORE}="1"
 
@@ -96,6 +102,9 @@ ATTRS{idVendor}=="2458", ATTRS{idProduct}=="0001", ENV{ID_MM_DEVICE_IGNORE}="1"
 
 # MediaTek GPS chip (HOLUX M-1200E, GlobalTop Gms-d1, etc)
 ATTRS{idVendor}=="0e8d", ATTRS{idProduct}=="3329", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# MediaTek MT65xx preloader
+ATTRS{idVendor}=="0e8d", ATTRS{idProduct}=="2000", ENV{ID_MM_DEVICE_IGNORE}="1"
 
 # PS-360 OEM (GPS sold with MS Street and Trips 2005)
 ATTRS{idVendor}=="067b", ATTRS{idProduct}=="aaa0", ENV{ID_MM_DEVICE_IGNORE}="1"
@@ -112,5 +121,47 @@ DRIVERS=="cypress_m8", ENV{ID_MM_DEVICE_IGNORE}="1"
 
 # All devices in the Openmoko vendor ID
 ATTRS{idVendor}=="1d50", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# All devices from 3D Robotics
+ATTRS{idVendor}=="26ac", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# empiriKit science lab controller device
+ATTRS{idVendor}=="0425", ATTRS{idProduct}=="0408", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# Infineon Flashloader used by Intel XMM modem bootloader
+ATTRS{idVendor}=="8087", ATTRS{idProduct}=="0716", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# GW Instek AFG-2225 arbitrary function generator
+ATTRS{idVendor}=="2184", ATTRS{idProduct}=="001c", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# PalmOS devices - even though some are phones, they are so old they most
+# likely are not being used anymore
+DRIVERS=="visor", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# Palmconnect
+ATTRS{idVendor}=="0830", ATTRS{idProduct}=="0080", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# IMC flashing device
+ATTRS{idVendor}=="058b", ATTRS{idProduct}=="0041", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# All devices from the Access Interfacing Solutions (Access Ltd)
+# Access IS do not produce modems and are unlikely to do so in future
+ATTRS{idVendor}=="0db5", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# Palm M500
+ATTRS{idVendor}=="0830", ATTRS{idProduct}=="0001", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# Palm M505
+ATTRS{idVendor}=="0830", ATTRS{idProduct}=="0002", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# Palm M515
+ATTRS{idVendor}=="0830", ATTRS{idProduct}=="0003", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# All devices from POSNET POLSKA S.A.
+# POSNET POLSKA S.A. do not produce modems and are unlikely to do so in future
+ATTRS{idVendor}=="1424", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# proxmark3
+ATTRS{manufacturer}=="proxmark.org", ENV{ID_MM_DEVICE_IGNORE}="1"
 
 LABEL="mm_usb_device_blacklist_end"

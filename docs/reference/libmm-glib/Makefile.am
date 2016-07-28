@@ -28,11 +28,12 @@ CFILE_GLOB =
 IGNORE_HFILES = \
 	mm-helpers.h \
 	mm-common-helpers.h \
+	mm-gdbus-test.h \
 	$(NULL)
 
 # CFLAGS and LDFLAGS for compiling scan program. Only needed
 # if $(DOC_MODULE).types is non-empty.
-INCLUDES = \
+AM_CPPFLAGS = \
 	-I$(srcdir) \
 	-I$(top_srcdir) \
 	-I$(top_builddir) \
@@ -45,7 +46,13 @@ GTKDOC_LIBS = \
 	$(NULL)
 
 # Extra options to supply to gtkdoc-mkdb
-MKDB_OPTIONS = --output-format=xml --sgml-mode --name-space=mm
+MKDB_OPTIONS = \
+	--output-format=xml \
+	--sgml-mode \
+	--name-space=mm \
+	--ignore-files=mm-gdbus-test.h \
+	--ignore-files=mm-gdbus-test.c \
+	$(NULL)
 
 # Images to copy into HTML directory
 HTML_IMAGES = \
@@ -53,7 +60,6 @@ HTML_IMAGES = \
 	$(NULL)
 
 content_files = \
-	$(HTML_IMAGES) \
 	$(NULL)
 
 if ENABLE_GTK_DOC
@@ -83,8 +89,3 @@ CLEANFILES += \
 	*.stamp \
 	-rf xml html tmpl \
 	$(NULL)
-
-# PNGs are removed only in maintainer-clean
-# Logos are copied to current directory by gtk-doc
-DISTCLEANFILES = \
-	$(notdir $(LOGOS_PNG))
