@@ -98,6 +98,32 @@ mm_modem_lock_from_qmi_uim_pin_status (QmiDmsUimPinStatus status,
 
 /*****************************************************************************/
 
+gboolean
+mm_pin_enabled_from_qmi_uim_pin_status (QmiDmsUimPinStatus status)
+{
+    switch (status) {
+    case QMI_DMS_UIM_PIN_STATUS_ENABLED_NOT_VERIFIED:
+    case QMI_DMS_UIM_PIN_STATUS_ENABLED_VERIFIED:
+    case QMI_DMS_UIM_PIN_STATUS_BLOCKED:
+    case QMI_DMS_UIM_PIN_STATUS_PERMANENTLY_BLOCKED:
+    case QMI_DMS_UIM_PIN_STATUS_UNBLOCKED:
+    case QMI_DMS_UIM_PIN_STATUS_CHANGED:
+        /* assume the PIN to be enabled then */
+        return TRUE;
+
+    case QMI_DMS_UIM_PIN_STATUS_DISABLED:
+    case QMI_DMS_UIM_PIN_STATUS_NOT_INITIALIZED:
+        /* assume the PIN to be disabled then */
+        return FALSE;
+
+    default:
+        /* by default assume disabled */
+        return FALSE;
+    }
+}
+
+/*****************************************************************************/
+
 QmiDmsUimFacility
 mm_3gpp_facility_to_qmi_uim_facility (MMModem3gppFacility mm)
 {
@@ -270,6 +296,7 @@ static const DmsLteBandsMap dms_lte_bands_map [] = {
      * - MM_MODEM_BAND_EUTRAN_XXII
      * - MM_MODEM_BAND_EUTRAN_XXIII
      * - MM_MODEM_BAND_EUTRAN_XXVI
+     * - MM_MODEM_BAND_EUTRAN_XLIV
      */
 };
 
@@ -446,6 +473,7 @@ static const NasLteBandsMap nas_lte_bands_map [] = {
      * - MM_MODEM_BAND_EUTRAN_XXII
      * - MM_MODEM_BAND_EUTRAN_XXIII
      * - MM_MODEM_BAND_EUTRAN_XXVI
+     * - MM_MODEM_BAND_EUTRAN_XLIV
      */
 };
 
@@ -493,7 +521,7 @@ mm_modem_bands_to_qmi_band_preference (GArray *mm_bands,
 
         band = g_array_index (mm_bands, MMModemBand, i);
 
-        if (band <= MM_MODEM_BAND_EUTRAN_XLIII &&
+        if (band <= MM_MODEM_BAND_EUTRAN_XLIV &&
             band >= MM_MODEM_BAND_EUTRAN_I) {
             /* Add LTE band preference */
             guint j;
@@ -956,11 +984,6 @@ QmiNasRadioTechnologyPreference
 mm_modem_capability_to_qmi_radio_technology_preference (MMModemCapability caps)
 {
     QmiNasRadioTechnologyPreference qmi = 0;
-
-    /* It is not expected to have a modem supporting 3GPP and 3GPP2 at the same
-     * time but not supporting SSP. */
-    g_warn_if_fail (caps & MM_MODEM_CAPABILITY_GSM_UMTS &&
-                    caps & MM_MODEM_CAPABILITY_CDMA_EVDO);
 
     if (caps & MM_MODEM_CAPABILITY_GSM_UMTS) {
         qmi |= QMI_NAS_RADIO_TECHNOLOGY_PREFERENCE_3GPP;

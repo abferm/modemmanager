@@ -78,7 +78,7 @@ mm_bearer_list_get_count_active (MMBearerList *self)
 
 gboolean
 mm_bearer_list_add_bearer (MMBearerList *self,
-                           MMBearer *bearer,
+                           MMBaseBearer *bearer,
                            GError **error)
 {
     /* Just in case, ensure we don't go off limits */
@@ -105,17 +105,8 @@ mm_bearer_list_delete_bearer (MMBearerList *self,
 {
     GList *l;
 
-    if (!g_str_has_prefix (path, MM_DBUS_BEARER_PREFIX)) {
-        g_set_error (error,
-                     MM_CORE_ERROR,
-                     MM_CORE_ERROR_INVALID_ARGS,
-                     "Cannot delete bearer: invalid path '%s'",
-                     path);
-        return FALSE;
-    }
-
     for (l = self->priv->bearers; l; l = g_list_next (l)) {
-        if (g_str_equal (path, mm_bearer_get_path (MM_BEARER (l->data)))) {
+        if (g_str_equal (path, mm_base_bearer_get_path (MM_BASE_BEARER (l->data)))) {
             g_object_unref (l->data);
             self->priv->bearers = g_list_delete_link (self->priv->bearers, l);
             g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_NUM_BEARERS]);
@@ -131,17 +122,6 @@ mm_bearer_list_delete_bearer (MMBearerList *self,
     return FALSE;
 }
 
-void
-mm_bearer_list_delete_all_bearers (MMBearerList *self)
-{
-    if (!self->priv->bearers)
-        return;
-
-    g_list_free_full (self->priv->bearers, (GDestroyNotify) g_object_unref);
-    self->priv->bearers = NULL;
-    g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_NUM_BEARERS]);
-}
-
 GStrv
 mm_bearer_list_get_paths (MMBearerList *self)
 {
@@ -153,7 +133,7 @@ mm_bearer_list_get_paths (MMBearerList *self)
                         1 + g_list_length (self->priv->bearers));
 
     for (i = 0, l = self->priv->bearers; l; l = g_list_next (l))
-        path_list[i++] = g_strdup (mm_bearer_get_path (MM_BEARER (l->data)));
+        path_list[i++] = g_strdup (mm_base_bearer_get_path (MM_BASE_BEARER (l->data)));
 
     return path_list;
 }
@@ -166,14 +146,28 @@ mm_bearer_list_foreach (MMBearerList *self,
     g_list_foreach (self->priv->bearers, (GFunc)func, user_data);
 }
 
-MMBearer *
-mm_bearer_list_find (MMBearerList *self,
-                     MMBearerProperties *properties)
+MMBaseBearer *
+mm_bearer_list_find_by_properties (MMBearerList *self,
+                                   MMBearerProperties *properties)
 {
     GList *l;
 
     for (l = self->priv->bearers; l; l = g_list_next (l)) {
-        if (mm_bearer_properties_cmp (mm_bearer_peek_config (MM_BEARER (l->data)), properties))
+        if (mm_bearer_properties_cmp (mm_base_bearer_peek_config (MM_BASE_BEARER (l->data)), properties))
+            return g_object_ref (l->data);
+    }
+
+    return NULL;
+}
+
+MMBaseBearer *
+mm_bearer_list_find_by_path (MMBearerList *self,
+                             const gchar *path)
+{
+    GList *l;
+
+    for (l = self->priv->bearers; l; l = g_list_next (l)) {
+        if (g_str_equal (path, mm_base_bearer_get_path (MM_BASE_BEARER (l->data))))
             return g_object_ref (l->data);
     }
 
@@ -185,7 +179,7 @@ mm_bearer_list_find (MMBearerList *self,
 typedef struct {
     GSimpleAsyncResult *result;
     GList *pending;
-    MMBearer *current;
+    MMBaseBearer *current;
 } DisconnectAllContext;
 
 static void
@@ -210,13 +204,13 @@ mm_bearer_list_disconnect_all_bearers_finish (MMBearerList *self,
 static void disconnect_next_bearer (DisconnectAllContext *ctx);
 
 static void
-disconnect_ready (MMBearer *bearer,
+disconnect_ready (MMBaseBearer *bearer,
                   GAsyncResult *res,
                   DisconnectAllContext *ctx)
 {
     GError *error = NULL;
 
-    if (!mm_bearer_disconnect_finish (bearer, res, &error)) {
+    if (!mm_base_bearer_disconnect_finish (bearer, res, &error)) {
         g_simple_async_result_take_error (ctx->result, error);
         disconnect_all_context_complete_and_free (ctx);
         return;
@@ -238,12 +232,12 @@ disconnect_next_bearer (DisconnectAllContext *ctx)
         return;
     }
 
-    ctx->current = MM_BEARER (ctx->pending->data);
+    ctx->current = MM_BASE_BEARER (ctx->pending->data);
     ctx->pending = g_list_delete_link (ctx->pending, ctx->pending);
 
-    mm_bearer_disconnect (ctx->current,
-                          (GAsyncReadyCallback)disconnect_ready,
-                          ctx);
+    mm_base_bearer_disconnect (ctx->current,
+                               (GAsyncReadyCallback)disconnect_ready,
+                               ctx);
 }
 
 void
@@ -334,7 +328,7 @@ static void
 mm_bearer_list_init (MMBearerList *self)
 {
     /* Initialize private data */
-    self->priv = G_TYPE_INSTANCE_GET_PRIVATE ((self),
+    self->priv = G_TYPE_INSTANCE_GET_PRIVATE (self,
                                               MM_TYPE_BEARER_LIST,
                                               MMBearerListPrivate);
 }
@@ -344,7 +338,10 @@ dispose (GObject *object)
 {
     MMBearerList *self = MM_BEARER_LIST (object);
 
-    mm_bearer_list_delete_all_bearers (self);
+    if (self->priv->bearers) {
+        g_list_free_full (self->priv->bearers, (GDestroyNotify) g_object_unref);
+        self->priv->bearers = NULL;
+    }
 
     G_OBJECT_CLASS (mm_bearer_list_parent_class)->dispose (object);
 }

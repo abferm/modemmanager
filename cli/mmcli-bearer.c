@@ -4,7 +4,7 @@
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
+ * the Free Software Foundation, either version 2 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -63,17 +63,17 @@ static GOptionEntry entries[] = {
 GOptionGroup *
 mmcli_bearer_get_option_group (void)
 {
-	GOptionGroup *group;
+    GOptionGroup *group;
 
-	/* Status options */
-	group = g_option_group_new ("bearer",
-	                            "Bearer options",
-	                            "Show bearer options",
-	                            NULL,
-	                            NULL);
-	g_option_group_add_entries (group, entries);
+    /* Status options */
+    group = g_option_group_new ("bearer",
+                                "Bearer options",
+                                "Show bearer options",
+                                NULL,
+                                NULL);
+    g_option_group_add_entries (group, entries);
 
-	return group;
+    return group;
 }
 
 gboolean
@@ -135,10 +135,12 @@ print_bearer_info (MMBearer *bearer)
     MMBearerIpConfig *ipv4_config;
     MMBearerIpConfig *ipv6_config;
     MMBearerProperties *properties;
+    MMBearerStats *stats;
 
     ipv4_config = mm_bearer_get_ipv4_config (bearer);
     ipv6_config = mm_bearer_get_ipv6_config (bearer);
     properties = mm_bearer_get_properties (bearer);
+    stats = mm_bearer_get_stats (bearer);
 
     /* Not the best thing to do, as we may be doing _get() calls twice, but
      * easiest to maintain */
@@ -190,23 +192,32 @@ print_bearer_info (MMBearer *bearer)
               mm_bearer_ip_method_get_string (mm_bearer_ip_config_get_method (ipv4_config)) :
               "none"));
     if (ipv4_config &&
-        mm_bearer_ip_config_get_method (ipv4_config) == MM_BEARER_IP_METHOD_STATIC) {
-        const gchar **dns;
-        guint i;
+        mm_bearer_ip_config_get_method (ipv4_config) != MM_BEARER_IP_METHOD_UNKNOWN) {
+        const gchar **dns = mm_bearer_ip_config_get_dns (ipv4_config);
+        guint i, mtu;
 
-        dns = mm_bearer_ip_config_get_dns (ipv4_config);
         g_print ("                     |  address: '%s'\n"
                  "                     |   prefix: '%u'\n"
-                 "                     |  gateway: '%s'\n"
-                 "                     |      DNS: '%s'",
+                 "                     |  gateway: '%s'\n",
                  VALIDATE_UNKNOWN (mm_bearer_ip_config_get_address (ipv4_config)),
                  mm_bearer_ip_config_get_prefix (ipv4_config),
-                 VALIDATE_UNKNOWN (mm_bearer_ip_config_get_gateway (ipv4_config)),
-                 VALIDATE_UNKNOWN (dns[0]));
-        /* Additional DNS addresses */
-        for (i = 1; dns[i]; i++)
-            g_print (", '%s'", dns[i]);
+                 VALIDATE_UNKNOWN (mm_bearer_ip_config_get_gateway (ipv4_config)));
+
+        if (dns && dns[0]) {
+            g_print (
+                 "                     |      DNS: '%s'", dns[0]);
+            /* Additional DNS addresses */
+            for (i = 1; dns[i]; i++)
+                g_print (", '%s'", dns[i]);
+        } else {
+            g_print (
+                 "                     |      DNS: none");
+        }
         g_print ("\n");
+
+        mtu = mm_bearer_ip_config_get_mtu (ipv4_config);
+        if (mtu)
+            g_print ("                     |      MTU: '%u'\n", mtu);
     }
 
     /* IPv6 */
@@ -216,25 +227,54 @@ print_bearer_info (MMBearer *bearer)
               mm_bearer_ip_method_get_string (mm_bearer_ip_config_get_method (ipv6_config)) :
               "none"));
     if (ipv6_config &&
-        mm_bearer_ip_config_get_method (ipv6_config) == MM_BEARER_IP_METHOD_STATIC) {
-        const gchar **dns;
-        guint i;
+        mm_bearer_ip_config_get_method (ipv6_config) != MM_BEARER_IP_METHOD_UNKNOWN) {
+        const gchar **dns = mm_bearer_ip_config_get_dns (ipv6_config);
+        guint i, mtu;
 
-        dns = mm_bearer_ip_config_get_dns (ipv6_config);
-        g_print ("                   |  address: '%s'\n"
-                 "                   |   prefix: '%u'\n"
-                 "                   |  gateway: '%s'\n"
-                 "                   |      DNS: '%s'",
+        g_print ("                     |  address: '%s'\n"
+                 "                     |   prefix: '%u'\n"
+                 "                     |  gateway: '%s'\n",
                  VALIDATE_UNKNOWN(mm_bearer_ip_config_get_address (ipv6_config)),
                  mm_bearer_ip_config_get_prefix (ipv6_config),
-                 VALIDATE_UNKNOWN(mm_bearer_ip_config_get_gateway (ipv6_config)),
-                 VALIDATE_UNKNOWN(dns[0]));
-        /* Additional DNS addresses */
-        for (i = 1; dns[i]; i++)
-            g_print (", '%s'", dns[i]);
+                 VALIDATE_UNKNOWN(mm_bearer_ip_config_get_gateway (ipv6_config)));
+
+        if (dns && dns[0]) {
+            g_print (
+                 "                     |      DNS: '%s'", dns[0]);
+            /* Additional DNS addresses */
+            for (i = 1; dns[i]; i++)
+                g_print (", '%s'", dns[i]);
+        } else {
+            g_print (
+                 "                     |      DNS: none");
+        }
         g_print ("\n");
+
+        mtu = mm_bearer_ip_config_get_mtu (ipv6_config);
+        if (mtu)
+            g_print ("                     |      MTU: '%u'\n", mtu);
     }
 
+    if (stats) {
+        guint64 val;
+
+        g_print ("  -------------------------\n"
+                 "  Stats              |          Duration: '%u'\n", mm_bearer_stats_get_duration (stats));
+
+        val = mm_bearer_stats_get_rx_bytes (stats);
+        if (val > 0)
+            g_print ("                     |    Bytes received: '%" G_GUINT64_FORMAT "'\n", val);
+        else
+            g_print ("                     |    Bytes received: 'N/A'\n");
+
+        val = mm_bearer_stats_get_tx_bytes (stats);
+        if (val > 0)
+            g_print ("                     | Bytes transmitted: '%" G_GUINT64_FORMAT "'\n", val);
+        else
+            g_print ("                     | Bytes transmitted: 'N/A'\n");
+    }
+
+    g_clear_object (&stats);
     g_clear_object (&properties);
     g_clear_object (&ipv4_config);
     g_clear_object (&ipv6_config);

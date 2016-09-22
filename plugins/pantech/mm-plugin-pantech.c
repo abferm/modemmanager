@@ -29,8 +29,8 @@
 
 G_DEFINE_TYPE (MMPluginPantech, mm_plugin_pantech, MM_TYPE_PLUGIN)
 
-int mm_plugin_major_version = MM_PLUGIN_MAJOR_VERSION;
-int mm_plugin_minor_version = MM_PLUGIN_MINOR_VERSION;
+MM_PLUGIN_DEFINE_MAJOR_VERSION
+MM_PLUGIN_DEFINE_MINOR_VERSION
 
 /*****************************************************************************/
 /* Custom commands for AT probing
@@ -108,19 +108,20 @@ grab_port (MMPlugin *self,
            GError **error)
 {
     MMPortType ptype;
-    MMAtPortFlag pflags = MM_AT_PORT_FLAG_NONE;
+    MMPortSerialAtFlag pflags = MM_PORT_SERIAL_AT_FLAG_NONE;
 
     ptype = mm_port_probe_get_port_type (probe);
 
     /* Always prefer the ttyACM port as PRIMARY AT port */
     if (ptype == MM_PORT_TYPE_AT &&
         g_str_has_prefix (mm_port_probe_get_port_name (probe), "ttyACM")) {
-        pflags = MM_AT_PORT_FLAG_PRIMARY;
+        pflags = MM_PORT_SERIAL_AT_FLAG_PRIMARY;
     }
 
     return mm_base_modem_grab_port (modem,
                                     mm_port_probe_get_port_subsys (probe),
                                     mm_port_probe_get_port_name (probe),
+                                    mm_port_probe_get_parent_path (probe),
                                     ptype,
                                     pflags,
                                     error);

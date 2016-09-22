@@ -196,6 +196,69 @@ test_cmgl_response_pantech_multiple (void *f, gpointer d)
 }
 
 /*****************************************************************************/
+/* Test CMGR responses */
+
+static void
+test_cmgr_response (const gchar *str,
+                    const MM3gppPduInfo *expected)
+{
+    MM3gppPduInfo *info;
+    GError *error = NULL;
+
+    info = mm_3gpp_parse_cmgr_read_response (str, 0, &error);
+    g_assert_no_error (error);
+    g_assert (info != NULL);
+
+    /* Ignore index, it is not included in CMGR response */
+    g_assert_cmpint (info->status, ==, expected->status);
+    g_assert_cmpstr (info->pdu, ==, expected->pdu);
+
+    mm_3gpp_pdu_info_free (info);
+}
+
+static void
+test_cmgr_response_generic (void *f, gpointer d)
+{
+    const gchar *str =
+        "+CMGR: 1,,147 07914306073011F00405812261F700003130916191314095C27"
+        "4D96D2FBBD3E437280CB2BEC961F3DB5D76818EF2F0381D9E83E06F39A8CC2E9FD372F"
+        "77BEE0249CBE37A594E0E83E2F532085E2F93CB73D0B93CA7A7DFEEB01C447F93DF731"
+        "0BD3E07CDCB727B7A9C7ECF41E432C8FC96B7C32079189E26874179D0F8DD7E93C3A0B"
+        "21B246AA641D637396C7EBBCB22D0FD7E77B5D376B3AB3C07";
+
+    const MM3gppPduInfo expected = {
+        .index = 0,
+        .status = 1,
+        .pdu = "07914306073011F00405812261F700003130916191314095C27"
+        "4D96D2FBBD3E437280CB2BEC961F3DB5D76818EF2F0381D9E83E06F39A8CC2E9FD372F"
+        "77BEE0249CBE37A594E0E83E2F532085E2F93CB73D0B93CA7A7DFEEB01C447F93DF731"
+        "0BD3E07CDCB727B7A9C7ECF41E432C8FC96B7C32079189E26874179D0F8DD7E93C3A0B"
+        "21B246AA641D637396C7EBBCB22D0FD7E77B5D376B3AB3C07"
+    };
+
+    test_cmgr_response (str, &expected);
+}
+
+/* Telit HE910 places empty quotation marks in the <alpha> field and a CR+LF
+ * before the PDU */
+static void
+test_cmgr_response_telit (void *f, gpointer d)
+{
+    const gchar *str =
+        "+CMGR: 0,\"\",50\r\n07916163838428F9040B916121021021F7000051905141642"
+        "20A23C4B0BCFD5E8740C4B0BCFD5E83C26E3248196687C9A0301D440DBBC3677918";
+
+    const MM3gppPduInfo expected = {
+        .index = 0,
+        .status = 0,
+        .pdu = "07916163838428F9040B916121021021F7000051905141642"
+        "20A23C4B0BCFD5E8740C4B0BCFD5E83C26E3248196687C9A0301D440DBBC3677918"
+    };
+
+    test_cmgr_response (str, &expected);
+}
+
+/*****************************************************************************/
 /* Test COPS responses */
 
 static void
@@ -711,6 +774,7 @@ test_creg_match (const char *test,
     g_assert_cmpuint (regex_num, ==, result->regex_num);
 
     success = mm_3gpp_parse_creg_response (info, &state, &lac, &ci, &access_tech, &cgreg, &cereg, &error);
+    g_match_info_free (info);
     g_assert (success);
     g_assert_no_error (error);
     g_assert_cmpuint (state, ==, result->state);
@@ -1071,7 +1135,7 @@ test_cereg2_novatel_lte_solicited (void *f, gpointer d)
 {
     RegTestData *data = (RegTestData *) d;
     const char *reply = "\r\n+CEREG: 2,1, 1F00, 20 ,79D903 ,7\r\n";
-    const CregResult result = { 1, 0x1F00, 0x79D903, MM_MODEM_ACCESS_TECHNOLOGY_LTE, 12, FALSE, TRUE };
+    const CregResult result = { 1, 0x1F00, 0x79D903, MM_MODEM_ACCESS_TECHNOLOGY_LTE, 13, FALSE, TRUE };
 
     test_creg_match ("Novatel LTE E362 CEREG=2", TRUE, reply, data, &result);
 }
@@ -1081,9 +1145,29 @@ test_cereg2_novatel_lte_unsolicited (void *f, gpointer d)
 {
     RegTestData *data = (RegTestData *) d;
     const char *reply = "\r\n+CEREG: 1, 1F00, 20 ,79D903 ,7\r\n";
-    const CregResult result = { 1, 0x1F00, 0x79D903, MM_MODEM_ACCESS_TECHNOLOGY_LTE, 11, FALSE, TRUE };
+    const CregResult result = { 1, 0x1F00, 0x79D903, MM_MODEM_ACCESS_TECHNOLOGY_LTE, 12, FALSE, TRUE };
 
     test_creg_match ("Novatel LTE E362 CEREG=2", FALSE, reply, data, &result);
+}
+
+static void
+test_cgreg2_thuraya_solicited (void *f, gpointer d)
+{
+    RegTestData *data = (RegTestData *) d;
+    const char *reply = "+CGREG: 1, \"0426\", \"F0,0F\"";
+    const CregResult result = { 1, 0x0426, 0x00F0, MM_MODEM_ACCESS_TECHNOLOGY_UNKNOWN, 11, TRUE, FALSE };
+
+    test_creg_match ("Thuraya solicited CREG=2", TRUE, reply, data, &result);
+}
+
+static void
+test_cgreg2_thuraya_unsolicited (void *f, gpointer d)
+{
+    RegTestData *data = (RegTestData *) d;
+    const char *reply = "\r\n+CGREG: 1, \"0426\", \"F0,0F\"\r\n";
+    const CregResult result = { 1, 0x0426, 0x00F0, MM_MODEM_ACCESS_TECHNOLOGY_UNKNOWN, 11, TRUE, FALSE };
+
+    test_creg_match ("Thuraya unsolicited CREG=2", FALSE, reply, data, &result);
 }
 
 /*****************************************************************************/
@@ -1445,6 +1529,7 @@ test_devid_item (void *f, gpointer d)
     if (strcmp (devid, item->devid))
         g_message ("%s", devid);
     g_assert (!strcmp (devid, item->devid));
+    g_free (devid);
 }
 
 /*****************************************************************************/
@@ -1536,6 +1621,7 @@ test_iccid_parse_quoted_swap_19_digit (void *f, gpointer d)
     parsed = mm_3gpp_parse_iccid (raw_iccid, &error);
     g_assert_no_error (error);
     g_assert_cmpstr (parsed, ==, expected);
+    g_free (parsed);
 }
 
 static void
@@ -1549,6 +1635,7 @@ test_iccid_parse_unquoted_swap_20_digit (void *f, gpointer d)
     parsed = mm_3gpp_parse_iccid (raw_iccid, &error);
     g_assert_no_error (error);
     g_assert_cmpstr (parsed, ==, expected);
+    g_free (parsed);
 }
 
 static void
@@ -1562,6 +1649,7 @@ test_iccid_parse_unquoted_unswapped_19_digit (void *f, gpointer d)
     parsed = mm_3gpp_parse_iccid (raw_iccid, &error);
     g_assert_no_error (error);
     g_assert_cmpstr (parsed, ==, expected);
+    g_free (parsed);
 }
 
 static void
@@ -1575,6 +1663,7 @@ test_iccid_parse_quoted_unswapped_20_digit (void *f, gpointer d)
     parsed = mm_3gpp_parse_iccid (raw_iccid, &error);
     g_assert_no_error (error);
     g_assert_cmpstr (parsed, ==, expected);
+    g_free (parsed);
 }
 
 static void
@@ -1585,7 +1674,9 @@ test_iccid_parse_short (void *f, gpointer d)
     GError *error = NULL;
 
     parsed = mm_3gpp_parse_iccid (raw_iccid, &error);
+    g_assert (parsed == NULL);
     g_assert_error (error, MM_CORE_ERROR, MM_CORE_ERROR_FAILED);
+    g_error_free (error);
 }
 
 static void
@@ -1596,7 +1687,9 @@ test_iccid_parse_invalid_chars (void *f, gpointer d)
     GError *error = NULL;
 
     parsed = mm_3gpp_parse_iccid (raw_iccid, &error);
+    g_assert (parsed == NULL);
     g_assert_error (error, MM_CORE_ERROR, MM_CORE_ERROR_FAILED);
+    g_error_free (error);
 }
 
 static void
@@ -1607,7 +1700,9 @@ test_iccid_parse_quoted_invalid_mii (void *f, gpointer d)
     GError *error = NULL;
 
     parsed = mm_3gpp_parse_iccid (raw_iccid, &error);
+    g_assert (parsed == NULL);
     g_assert_error (error, MM_CORE_ERROR, MM_CORE_ERROR_FAILED);
+    g_error_free (error);
 }
 
 static void
@@ -1618,7 +1713,9 @@ test_iccid_parse_unquoted_invalid_mii (void *f, gpointer d)
     GError *error = NULL;
 
     parsed = mm_3gpp_parse_iccid (raw_iccid, &error);
+    g_assert (parsed == NULL);
     g_assert_error (error, MM_CORE_ERROR, MM_CORE_ERROR_FAILED);
+    g_error_free (error);
 }
 
 /*****************************************************************************/
@@ -1721,6 +1818,34 @@ test_cgdcont_test_response_single_context (void *f, gpointer d)
     test_cgdcont_test_results ("Single Context", reply, &expected[0], G_N_ELEMENTS (expected));
 }
 
+static void
+test_cgdcont_test_response_thuraya (void *f, gpointer d)
+{
+    const gchar *reply =
+        "+CGDCONT: ( 1 ) , \"IP\" ,,, (0-2),(0-3)\r\n"
+        "+CGDCONT: , \"PPP\" ,,, (0-2),(0-3)\r\n";
+    static MM3gppPdpContextFormat expected[] = {
+        { 1, 1, MM_BEARER_IP_FAMILY_IPV4 }
+    };
+
+    test_cgdcont_test_results ("Thuraya", reply, &expected[0], G_N_ELEMENTS (expected));
+}
+
+
+static void
+test_cgdcont_test_response_cinterion_phs8 (void *f, gpointer d)
+{
+    const gchar *reply =
+        "+CGDCONT: (1-17,101-116),\"IP\",,,(0),(0-4)\r\n";
+    static MM3gppPdpContextFormat expected[] = {
+        { 1, 17, MM_BEARER_IP_FAMILY_IPV4 }
+    };
+
+    test_cgdcont_test_results ("Cinterion PHS8-USA REVISION 03.001", reply, &expected[0], G_N_ELEMENTS (expected));
+}
+
+
+
 /*****************************************************************************/
 /* Test CGDCONT read responses */
 
@@ -1811,7 +1936,8 @@ is_storage_supported (GArray *supported,
 static void
 test_cpms_response_cinterion (void *f, gpointer d)
 {
-    const gchar *reply = "+CPMS: (\"ME\",\"SM\",\"MT\"),(\"ME\",\"SM\",\"MT\"),(\"SM\",\"MT\")";
+    /* Use different sets for each on purpose, even if weird */
+    const gchar *reply = "+CPMS: (\"ME\",\"MT\"),(\"ME\",\"SM\",\"MT\"),(\"SM\",\"MT\")";
     GArray *mem1 = NULL;
     GArray *mem2 = NULL;
     GArray *mem3 = NULL;
@@ -1819,17 +1945,178 @@ test_cpms_response_cinterion (void *f, gpointer d)
     trace ("\nTesting Cinterion +CPMS=? response...\n");
 
     g_assert (mm_3gpp_parse_cpms_test_response (reply, &mem1, &mem2, &mem3));
-    g_assert (mem1->len == 3);
+    g_assert_cmpuint (mem1->len, ==, 2);
     g_assert (is_storage_supported (mem1, MM_SMS_STORAGE_ME));
-    g_assert (is_storage_supported (mem1, MM_SMS_STORAGE_SM));
     g_assert (is_storage_supported (mem1, MM_SMS_STORAGE_MT));
-    g_assert (mem2->len == 3);
+    g_assert_cmpuint (mem2->len, ==, 3);
     g_assert (is_storage_supported (mem2, MM_SMS_STORAGE_ME));
     g_assert (is_storage_supported (mem2, MM_SMS_STORAGE_SM));
     g_assert (is_storage_supported (mem2, MM_SMS_STORAGE_MT));
-    g_assert (mem3->len == 2);
+    g_assert_cmpuint (mem3->len, ==, 2);
     g_assert (is_storage_supported (mem3, MM_SMS_STORAGE_SM));
     g_assert (is_storage_supported (mem3, MM_SMS_STORAGE_MT));
+
+    g_array_unref (mem1);
+    g_array_unref (mem2);
+    g_array_unref (mem3);
+}
+
+static void
+test_cpms_response_huawei_mu609 (void *f, gpointer d)
+{
+    /* Use different sets for each on purpose, even if weird */
+    const gchar *reply = "+CPMS: \"ME\",\"MT\",\"SM\"";
+    GArray *mem1 = NULL;
+    GArray *mem2 = NULL;
+    GArray *mem3 = NULL;
+
+    trace ("\nTesting Huawei MU609 +CPMS=? response...\n");
+
+    g_assert (mm_3gpp_parse_cpms_test_response (reply, &mem1, &mem2, &mem3));
+    g_assert_cmpuint (mem1->len, ==, 1);
+    g_assert (is_storage_supported (mem1, MM_SMS_STORAGE_ME));
+    g_assert_cmpuint (mem2->len, ==, 1);
+    g_assert (is_storage_supported (mem2, MM_SMS_STORAGE_MT));
+    g_assert_cmpuint (mem3->len, ==, 1);
+    g_assert (is_storage_supported (mem3, MM_SMS_STORAGE_SM));
+
+    g_array_unref (mem1);
+    g_array_unref (mem2);
+    g_array_unref (mem3);
+}
+
+static void
+test_cpms_response_nokia_c6 (void *f, gpointer d)
+{
+    /* Use different sets for each on purpose, even if weird */
+    const gchar *reply = "+CPMS: (),(),()";
+    GArray *mem1 = NULL;
+    GArray *mem2 = NULL;
+    GArray *mem3 = NULL;
+
+    trace ("\nTesting Nokia C6 response...\n");
+
+    g_assert (mm_3gpp_parse_cpms_test_response (reply, &mem1, &mem2, &mem3));
+    g_assert_cmpuint (mem1->len, ==, 0);
+    g_assert_cmpuint (mem2->len, ==, 0);
+    g_assert_cmpuint (mem3->len, ==, 0);
+
+    g_array_unref (mem1);
+    g_array_unref (mem2);
+    g_array_unref (mem3);
+}
+
+static void
+test_cpms_response_mixed (void *f, gpointer d)
+{
+    /*
+     * First:    ("ME","MT")  2-item group
+     * Second:   "ME"         1 item
+     * Third:    ("SM")       1-item group
+     */
+    const gchar *reply = "+CPMS: (\"ME\",\"MT\"),\"ME\",(\"SM\")";
+    GArray *mem1 = NULL;
+    GArray *mem2 = NULL;
+    GArray *mem3 = NULL;
+
+    trace ("\nTesting mixed +CPMS=? response...\n");
+
+    g_assert (mm_3gpp_parse_cpms_test_response (reply, &mem1, &mem2, &mem3));
+    g_assert_cmpuint (mem1->len, ==, 2);
+    g_assert (is_storage_supported (mem1, MM_SMS_STORAGE_ME));
+    g_assert (is_storage_supported (mem1, MM_SMS_STORAGE_MT));
+    g_assert_cmpuint (mem2->len, ==, 1);
+    g_assert (is_storage_supported (mem2, MM_SMS_STORAGE_ME));
+    g_assert_cmpuint (mem3->len, ==, 1);
+    g_assert (is_storage_supported (mem3, MM_SMS_STORAGE_SM));
+
+    g_array_unref (mem1);
+    g_array_unref (mem2);
+    g_array_unref (mem3);
+}
+
+static void
+test_cpms_response_mixed_spaces (void *f, gpointer d)
+{
+    /* Test with whitespaces here and there */
+    const gchar *reply = "+CPMS:     (  \"ME\"  ,  \"MT\"  )   ,  \"ME\" ,   (  \"SM\"  )";
+    GArray *mem1 = NULL;
+    GArray *mem2 = NULL;
+    GArray *mem3 = NULL;
+
+    trace ("\nTesting mixed +CPMS=? response with spaces...\n");
+
+    g_assert (mm_3gpp_parse_cpms_test_response (reply, &mem1, &mem2, &mem3));
+    g_assert_cmpuint (mem1->len, ==, 2);
+    g_assert (is_storage_supported (mem1, MM_SMS_STORAGE_ME));
+    g_assert (is_storage_supported (mem1, MM_SMS_STORAGE_MT));
+    g_assert_cmpuint (mem2->len, ==, 1);
+    g_assert (is_storage_supported (mem2, MM_SMS_STORAGE_ME));
+    g_assert_cmpuint (mem3->len, ==, 1);
+    g_assert (is_storage_supported (mem3, MM_SMS_STORAGE_SM));
+
+    g_array_unref (mem1);
+    g_array_unref (mem2);
+    g_array_unref (mem3);
+}
+
+static void
+test_cpms_response_empty_fields (void *f, gpointer d)
+{
+    /*
+     * First:    ()    Empty group
+     * Second:         Empty item
+     * Third:    (  )  Empty group with spaces
+     */
+    const gchar *reply = "+CPMS: (),,(  )";
+    GArray *mem1 = NULL;
+    GArray *mem2 = NULL;
+    GArray *mem3 = NULL;
+
+    trace ("\nTesting mixed +CPMS=? response...\n");
+
+    g_assert (mm_3gpp_parse_cpms_test_response (reply, &mem1, &mem2, &mem3));
+    g_assert_cmpuint (mem1->len, ==, 0);
+    g_assert_cmpuint (mem2->len, ==, 0);
+    g_assert_cmpuint (mem3->len, ==, 0);
+
+    g_array_unref (mem1);
+    g_array_unref (mem2);
+    g_array_unref (mem3);
+}
+
+typedef struct {
+    const gchar *query;
+    MMSmsStorage mem1_want;
+    MMSmsStorage mem2_want;
+} CpmsQueryTest;
+
+CpmsQueryTest cpms_query_test[] = {
+    {"+CPMS: \"ME\",1,100,\"MT\",5,100,\"TA\",1,100", 2, 3},
+    {"+CPMS: \"SM\",100,100,\"SR\",5,10,\"TA\",1,100", 1, 4},
+    {"+CPMS: \"XX\",100,100,\"BM\",5,10,\"TA\",1,100", 0, 5},
+    {"+CPMS: \"XX\",100,100,\"YY\",5,10,\"TA\",1,100", 0, 0},
+    {NULL, 0, 0}
+};
+
+static void
+test_cpms_query_response (void *f, gpointer d) {
+    MMSmsStorage mem1;
+    MMSmsStorage mem2;
+    gboolean ret;
+    GError *error = NULL;
+    int i;
+
+    for (i = 0; cpms_query_test[i].query != NULL; i++){
+        ret = mm_3gpp_parse_cpms_query_response (cpms_query_test[i].query,
+                                                 &mem1,
+                                                 &mem2,
+                                                 &error);
+        g_assert(ret);
+        g_assert_no_error (error);
+        g_assert_cmpuint (cpms_query_test[i].mem1_want, ==, mem1);
+        g_assert_cmpuint (cpms_query_test[i].mem2_want, ==, mem2);
+    }
 }
 
 /*****************************************************************************/
@@ -2323,6 +2610,129 @@ test_supported_capability_filter (void *f, gpointer d)
 }
 
 /*****************************************************************************/
+/* Test +CCLK responses */
+
+typedef struct {
+    const gchar *str;
+    gboolean ret;
+    gboolean test_iso8601;
+    gboolean test_tz;
+    gchar *iso8601;
+    gint32 offset;
+} CclkTest;
+
+static const CclkTest cclk_tests[] = {
+    { "+CCLK: \"14/08/05,04:00:21+40\"", TRUE, TRUE, FALSE,
+        "2014-08-05T04:00:21+10:00", 600 },
+    { "+CCLK: \"14/08/05,04:00:21+40\"", TRUE, FALSE, TRUE,
+        "2014-08-05T04:00:21+10:00", 600 },
+    { "+CCLK: \"14/08/05,04:00:21+40\"", TRUE, TRUE, TRUE,
+        "2014-08-05T04:00:21+10:00", 600 },
+
+    { "+CCLK: \"15/02/28,20:30:40-32\"", TRUE, TRUE, FALSE,
+        "2015-02-28T20:30:40-08:00", -480 },
+    { "+CCLK: \"15/02/28,20:30:40-32\"", TRUE, FALSE, TRUE,
+        "2015-02-28T20:30:40-08:00", -480 },
+    { "+CCLK: \"15/02/28,20:30:40-32\"", TRUE, TRUE, TRUE,
+        "2015-02-28T20:30:40-08:00", -480 },
+
+    { "+CCLK: \"XX/XX/XX,XX:XX:XX+XX\"", FALSE, TRUE, FALSE,
+        NULL, MM_NETWORK_TIMEZONE_OFFSET_UNKNOWN },
+
+    { NULL, FALSE, FALSE, FALSE, NULL, MM_NETWORK_TIMEZONE_OFFSET_UNKNOWN }
+};
+
+static void
+test_cclk_response (void)
+{
+    guint i;
+
+    for (i = 0; cclk_tests[i].str; i++) {
+        GError *error = NULL;
+        gchar *iso8601 = NULL;
+        MMNetworkTimezone *tz = NULL;
+        gboolean ret;
+
+        ret = mm_parse_cclk_response (cclk_tests[i].str,
+                                      cclk_tests[i].test_iso8601 ? &iso8601 : NULL,
+                                      cclk_tests[i].test_tz ? &tz : NULL,
+                                      &error);
+
+        g_assert (ret == cclk_tests[i].ret);
+        g_assert (ret == (error ? FALSE : TRUE));
+
+        g_clear_error (&error);
+
+        if (cclk_tests[i].test_iso8601)
+            g_assert_cmpstr (cclk_tests[i].iso8601, ==, iso8601);
+
+        if (cclk_tests[i].test_tz) {
+            g_assert (mm_network_timezone_get_offset (tz) == cclk_tests[i].offset);
+            g_assert (mm_network_timezone_get_dst_offset (tz) == MM_NETWORK_TIMEZONE_OFFSET_UNKNOWN);
+            g_assert (mm_network_timezone_get_leap_seconds (tz) == MM_NETWORK_TIMEZONE_LEAP_SECONDS_UNKNOWN);
+        }
+
+        if (iso8601)
+            g_free (iso8601);
+
+        if (tz)
+            g_object_unref (tz);
+    }
+}
+
+
+/*****************************************************************************/
+/* Test +CRSM responses */
+
+typedef struct {
+    const gchar *str;
+    gboolean ret;
+    guint sw1;
+    guint sw2;
+    gchar *hex;
+} CrsmTest;
+
+static const CrsmTest crsm_tests[] = {
+    { "+CRSM: 144, 0, 0054485552415941FFFFFFFFFFFFFFFFFF", TRUE, 144, 0, "0054485552415941FFFFFFFFFFFFFFFFFF" },
+    { "+CRSM: 144, 0,0054485552415941FFFFFFFFFFFFFFFFFF", TRUE, 144, 0, "0054485552415941FFFFFFFFFFFFFFFFFF" },
+    { "+CRSM: 144, 0, \"0054485552415941FFFFFFFFFFFFFFFFFF\"", TRUE, 144, 0, "0054485552415941FFFFFFFFFFFFFFFFFF" },
+    { "+CRSM: 144, 0,\"0054485552415941FFFFFFFFFFFFFFFFFF\"", TRUE, 144, 0, "0054485552415941FFFFFFFFFFFFFFFFFF" },
+    { NULL, FALSE, 0, 0, NULL }
+};
+
+static void
+test_crsm_response (void)
+{
+    guint i;
+
+    for (i = 0; crsm_tests[i].str; i++) {
+        GError *error = NULL;
+        guint sw1 = 0;
+        guint sw2 = 0;
+        gchar *hex = 0;
+        gboolean ret;
+
+        ret = mm_3gpp_parse_crsm_response (crsm_tests[i].str,
+                                           &sw1,
+                                           &sw2,
+                                           &hex,
+                                           &error);
+
+        g_assert (ret == crsm_tests[i].ret);
+        g_assert (ret == (error ? FALSE : TRUE));
+
+        g_clear_error (&error);
+
+        g_assert (sw1 == crsm_tests[i].sw1);
+        g_assert (sw2 == crsm_tests[i].sw2);
+
+        g_assert_cmpstr (crsm_tests[i].hex, ==, hex);
+
+        g_free(hex);
+    }
+}
+
+/*****************************************************************************/
 
 void
 _mm_log (const char *loc,
@@ -2348,47 +2758,47 @@ _mm_log (const char *loc,
 
 int main (int argc, char **argv)
 {
-	GTestSuite *suite;
+    GTestSuite *suite;
     RegTestData *reg_data;
     gint result;
     DevidItem *item = &devids[0];
 
     g_type_init ();
-	g_test_init (&argc, &argv, NULL);
+    g_test_init (&argc, &argv, NULL);
 
-	suite = g_test_get_root ();
+    suite = g_test_get_root ();
     reg_data = reg_test_data_new ();
 
-	g_test_suite_add (suite, TESTCASE (test_cops_response_tm506, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_gt3gplus, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_ac881, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_gtmax36, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_ac860, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_gtm378, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_motoc, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_mf627a, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_mf627b, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_e160g, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_mercury, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_quicksilver, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_icon225, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_icon452, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_f3507g, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_f3607gw, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_mc8775, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_n80, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_e1550, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_mf622, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_e226, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_xu870, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_gtultraexpress, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_n2720, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_gobi, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_sek600i, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_samsung_z810, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_tm506, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_gt3gplus, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_ac881, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_gtmax36, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_ac860, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_gtm378, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_motoc, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_mf627a, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_mf627b, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_e160g, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_mercury, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_quicksilver, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_icon225, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_icon452, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_f3507g, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_f3607gw, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_mc8775, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_n80, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_e1550, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_mf622, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_e226, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_xu870, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_gtultraexpress, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_n2720, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_gobi, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_sek600i, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_samsung_z810, NULL));
 
     g_test_suite_add (suite, TESTCASE (test_cops_response_gsm_invalid, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cops_response_umts_invalid, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cops_response_umts_invalid, NULL));
 
     g_test_suite_add (suite, TESTCASE (test_creg1_solicited, reg_data));
     g_test_suite_add (suite, TESTCASE (test_creg1_unsolicited, reg_data));
@@ -2417,6 +2827,8 @@ int main (int argc, char **argv)
     g_test_suite_add (suite, TESTCASE (test_cgreg2_md400_unsolicited, reg_data));
     g_test_suite_add (suite, TESTCASE (test_cgreg2_x220_unsolicited, reg_data));
     g_test_suite_add (suite, TESTCASE (test_cgreg2_unsolicited_with_rac, reg_data));
+    g_test_suite_add (suite, TESTCASE (test_cgreg2_thuraya_solicited, reg_data));
+    g_test_suite_add (suite, TESTCASE (test_cgreg2_thuraya_unsolicited, reg_data));
 
     g_test_suite_add (suite, TESTCASE (test_cereg1_solicited, reg_data));
     g_test_suite_add (suite, TESTCASE (test_cereg1_unsolicited, reg_data));
@@ -2452,15 +2864,23 @@ int main (int argc, char **argv)
         item++;
     }
 
-    g_test_suite_add (suite, TESTCASE (test_cpms_response_cinterion, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cpms_response_cinterion,    NULL));
+    g_test_suite_add (suite, TESTCASE (test_cpms_response_huawei_mu609, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cpms_response_nokia_c6,     NULL));
+    g_test_suite_add (suite, TESTCASE (test_cpms_response_mixed,        NULL));
+    g_test_suite_add (suite, TESTCASE (test_cpms_response_mixed_spaces, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cpms_response_empty_fields, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cpms_query_response,        NULL));
 
     g_test_suite_add (suite, TESTCASE (test_cgdcont_test_response_single, NULL));
     g_test_suite_add (suite, TESTCASE (test_cgdcont_test_response_multiple, NULL));
     g_test_suite_add (suite, TESTCASE (test_cgdcont_test_response_multiple_and_ignore, NULL));
     g_test_suite_add (suite, TESTCASE (test_cgdcont_test_response_single_context, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cgdcont_test_response_thuraya, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cgdcont_test_response_cinterion_phs8, NULL));
 
-	g_test_suite_add (suite, TESTCASE (test_cgdcont_read_response_nokia, NULL));
-	g_test_suite_add (suite, TESTCASE (test_cgdcont_read_response_samsung, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cgdcont_read_response_nokia, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cgdcont_read_response_samsung, NULL));
 
     g_test_suite_add (suite, TESTCASE (test_cnum_response_generic, NULL));
     g_test_suite_add (suite, TESTCASE (test_cnum_response_generic_without_detail, NULL));
@@ -2479,9 +2899,16 @@ int main (int argc, char **argv)
     g_test_suite_add (suite, TESTCASE (test_cmgl_response_pantech, NULL));
     g_test_suite_add (suite, TESTCASE (test_cmgl_response_pantech_multiple, NULL));
 
+    g_test_suite_add (suite, TESTCASE (test_cmgr_response_generic, NULL));
+    g_test_suite_add (suite, TESTCASE (test_cmgr_response_telit, NULL));
+
     g_test_suite_add (suite, TESTCASE (test_supported_mode_filter, NULL));
 
     g_test_suite_add (suite, TESTCASE (test_supported_capability_filter, NULL));
+
+    g_test_suite_add (suite, TESTCASE (test_cclk_response, NULL));
+
+    g_test_suite_add (suite, TESTCASE (test_crsm_response, NULL));
 
     result = g_test_run ();
 

@@ -47,7 +47,7 @@ G_DEFINE_TYPE_EXTENDED (MMBroadbandModemNokia, mm_broadband_modem_nokia, MM_TYPE
 /*****************************************************************************/
 /* Create SIM (Modem interface) */
 
-static MMSim *
+static MMBaseSim *
 create_sim_finish (MMIfaceModem *self,
                    GAsyncResult *res,
                    GError **error)
@@ -184,6 +184,43 @@ load_access_technologies (MMIfaceModem *self,
 }
 
 /*****************************************************************************/
+/* Loading supported charsets (Modem interface) */
+
+static MMModemCharset
+load_supported_charsets_finish (MMIfaceModem *self,
+                                GAsyncResult *res,
+                                GError **error)
+{
+    const gchar *response;
+    MMModemCharset charsets = MM_MODEM_CHARSET_UNKNOWN;
+
+    response = mm_base_modem_at_command_finish (MM_BASE_MODEM (self), res, error);
+    if (!response)
+        return MM_MODEM_CHARSET_UNKNOWN;
+
+    if (!mm_3gpp_parse_cscs_test_response (response, &charsets)) {
+        g_set_error (error, MM_CORE_ERROR, MM_CORE_ERROR_FAILED,
+                     "Failed to parse the supported character sets response");
+        return MM_MODEM_CHARSET_UNKNOWN;
+    }
+
+    return charsets;
+}
+
+static void
+load_supported_charsets (MMIfaceModem *self,
+                         GAsyncReadyCallback callback,
+                         gpointer user_data)
+{
+    mm_base_modem_at_command (MM_BASE_MODEM (self),
+                              "+CSCS=?",
+                              20,
+                              TRUE,
+                              callback,
+                              user_data);
+}
+
+/*****************************************************************************/
 /* Initializing the modem (during first enabling) */
 
 typedef struct {
@@ -300,7 +337,7 @@ static const gchar *primary_init_sequence[] = {
 static void
 setup_ports (MMBroadbandModem *self)
 {
-    MMAtSerialPort *primary;
+    MMPortSerialAt *primary;
 
     /* Call parent's setup ports first always */
     MM_BROADBAND_MODEM_CLASS (mm_broadband_modem_nokia_parent_class)->setup_ports (self);
@@ -308,7 +345,7 @@ setup_ports (MMBroadbandModem *self)
     primary = mm_base_modem_peek_port_primary (MM_BASE_MODEM (self));
 
     g_object_set (primary,
-                  MM_AT_SERIAL_PORT_INIT_SEQUENCE, primary_init_sequence,
+                  MM_PORT_SERIAL_AT_INIT_SEQUENCE, primary_init_sequence,
                   NULL);
 }
 
@@ -367,6 +404,8 @@ iface_modem_init (MMIfaceModem *iface)
     iface->modem_power_up_finish = NULL;
     iface->modem_power_down = NULL;
     iface->modem_power_down_finish = NULL;
+    iface->load_supported_charsets = load_supported_charsets;
+    iface->load_supported_charsets_finish = load_supported_charsets_finish;
 
     iface->load_access_technologies = load_access_technologies;
     iface->load_access_technologies_finish = load_access_technologies_finish;

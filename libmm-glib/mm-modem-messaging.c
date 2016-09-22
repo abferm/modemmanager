@@ -155,7 +155,7 @@ mm_modem_messaging_get_supported_storages (MMModemMessaging *self,
                                            MMSmsStorage **storages,
                                            guint *n_storages)
 {
-    GArray *array;
+    GArray *array = NULL;
 
     g_return_val_if_fail (MM_IS_MODEM_MESSAGING (self), FALSE);
     g_return_val_if_fail (storages != NULL, FALSE);
@@ -530,7 +530,7 @@ create_sms_ready (MMModemMessaging *self,
 }
 
 /**
- * mm_modem_messaging_create_sms:
+ * mm_modem_messaging_create:
  * @self: A #MMModemMessaging.
  * @properties: A ##MMSmsProperties object with the properties to use.
  * @cancellable: (allow-none): A #GCancellable or %NULL.

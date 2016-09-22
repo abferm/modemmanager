@@ -29,6 +29,16 @@ gboolean mm_huawei_parse_ndisstatqry_response (const gchar *response,
                                                GError **error);
 
 /*****************************************************************************/
+/* ^DHCP response parser */
+gboolean mm_huawei_parse_dhcp_response (const char *reply,
+                                        guint *out_address,
+                                        guint *out_prefix,
+                                        guint *out_gateway,
+                                        guint *out_dns1,
+                                        guint *out_dns2,
+                                        GError **error);
+
+/*****************************************************************************/
 /* ^SYSINFO response parser */
 gboolean mm_huawei_parse_sysinfo_response (const char *reply,
                                            guint *out_srv_status,
@@ -112,5 +122,21 @@ GArray *mm_huawei_parse_syscfgex_test (const gchar *response,
 const MMHuaweiSyscfgexCombination *mm_huawei_parse_syscfgex_response (const gchar *response,
                                                                       const GArray *supported_mode_combinations,
                                                                       GError **error);
+
+/*****************************************************************************/
+/* ^NWTIME response parser */
+
+gboolean mm_huawei_parse_nwtime_response (const gchar *response,
+                                          gchar **iso8601p,
+                                          MMNetworkTimezone **tzp,
+                                          GError **error);
+
+/*****************************************************************************/
+/* ^TIME response parser */
+
+gboolean mm_huawei_parse_time_response (const gchar *response,
+                                        gchar **iso8601p,
+                                        MMNetworkTimezone **tzp,
+                                        GError **error);
 
 #endif  /* MM_MODEM_HELPERS_HUAWEI_H */

@@ -16,6 +16,7 @@
 #include <glib.h>
 #include <glib-object.h>
 #include <locale.h>
+#include <arpa/inet.h>
 
 #include <ModemManager.h>
 #define _LIBMM_INSIDE_MM
@@ -101,6 +102,10 @@ static const NdisstatqryTest ndisstatqry_tests[] = {
     { "^NDISSTATQRY: 1,,,\"IPV4\",0,,,\"IPV6\"\r\n", TRUE,  TRUE,  TRUE,  FALSE },
     { "^NDISSTATQRY: 0,,,\"IPV4\",1,,,\"IPV6\"\r\n", TRUE,  FALSE, TRUE,  TRUE  },
     { "^NDISSTATQRY: 0,,,\"IPV4\",0,,,\"IPV6\"\r\n", TRUE,  FALSE, TRUE,  FALSE },
+    { "^NDISSTATQry:1",     TRUE, TRUE,  FALSE, FALSE },
+    { "^NDISSTATQry:1\r\n", TRUE, TRUE,  FALSE, FALSE },
+    { "^NDISSTATQry:0",     TRUE, FALSE, FALSE, FALSE },
+    { "^NDISSTATQry:0\r\n", TRUE, FALSE, FALSE, FALSE },
     { NULL, FALSE, FALSE, FALSE, FALSE }
 };
 
@@ -131,6 +136,55 @@ test_ndisstatqry (void)
         g_assert (ipv6_available == ndisstatqry_tests[i].expected_ipv6_available);
         if (ipv6_available)
             g_assert (ipv6_connected == ndisstatqry_tests[i].expected_ipv6_connected);
+    }
+}
+
+/*****************************************************************************/
+/* Test ^DHCP responses */
+
+typedef struct {
+    const gchar *str;
+    const gchar *expected_addr;
+    guint expected_prefix;
+    const gchar *expected_gateway;
+    const gchar *expected_dns1;
+    const gchar *expected_dns2;
+} DhcpTest;
+
+static const DhcpTest dhcp_tests[] = {
+    { "^DHCP:a3ec5c64,f8ffffff,a1ec5c64,a1ec5c64,2200b10a,74bba80a,236800,236800\r\n",
+      "100.92.236.163", 29, "100.92.236.161", "10.177.0.34", "10.168.187.116" },
+    { "^DHCP: 1010A0A,FCFFFFFF,2010A0A,2010A0A,0,0,150000000,150000000\r\n",
+      "10.10.1.1", 30, "10.10.1.2", "0.0.0.0", "0.0.0.0" },
+    { "^DHCP: CCDB080A,F8FFFFFF,C9DB080A,C9DB080A,E67B59C0,E77B59C0,85600,85600\r\n",
+      "10.8.219.204", 29, "10.8.219.201", "192.89.123.230", "192.89.123.231" },
+    { NULL }
+};
+
+static void
+test_dhcp (void)
+{
+    guint i;
+
+    for (i = 0; dhcp_tests[i].str; i++) {
+        GError *error = NULL;
+        guint addr, prefix, gateway, dns1, dns2;
+
+        g_assert (mm_huawei_parse_dhcp_response (
+                      dhcp_tests[i].str,
+                      &addr,
+                      &prefix,
+                      &gateway,
+                      &dns1,
+                      &dns2,
+                      &error) == TRUE);
+        g_assert_no_error (error);
+
+        g_assert_cmpstr (inet_ntoa (*((struct in_addr *) &addr)), ==, dhcp_tests[i].expected_addr);
+        g_assert_cmpint (prefix, ==, dhcp_tests[i].expected_prefix);
+        g_assert_cmpstr (inet_ntoa (*((struct in_addr *) &gateway)), ==, dhcp_tests[i].expected_gateway);
+        g_assert_cmpstr (inet_ntoa (*((struct in_addr *) &dns1)), ==, dhcp_tests[i].expected_dns1);
+        g_assert_cmpstr (inet_ntoa (*((struct in_addr *) &dns2)), ==, dhcp_tests[i].expected_dns2);
     }
 }
 
@@ -420,6 +474,7 @@ test_prefmode_response (void)
         found = mm_huawei_parse_prefmode_response (prefmode_response_tests[i].str,
                                                    combinations,
                                                    &error);
+        g_assert_no_error (error);
         g_assert (found != NULL);
         g_assert_cmpuint (found->allowed, ==, prefmode_response_tests[i].allowed);
         g_assert_cmpuint (found->preferred, ==, prefmode_response_tests[i].preferred);
@@ -672,6 +727,7 @@ test_syscfg_response (void)
                                                  combinations,
                                                  &error);
 
+        g_assert_no_error (error);
         g_assert (found != NULL);
         g_assert_cmpuint (found->allowed, ==, syscfg_response_tests[i].allowed);
         g_assert_cmpuint (found->preferred, ==, syscfg_response_tests[i].preferred);
@@ -993,11 +1049,145 @@ test_syscfgex_response (void)
                                                    combinations,
                                                    &error);
 
+        g_assert_no_error (error);
         g_assert (found != NULL);
         g_assert_cmpuint (found->allowed, ==, syscfgex_response_tests[i].allowed);
         g_assert_cmpuint (found->preferred, ==, syscfgex_response_tests[i].preferred);
 
         g_array_unref (combinations);
+    }
+}
+
+/*****************************************************************************/
+/* Test ^NWTIME responses */
+
+typedef struct {
+    const gchar *str;
+    gboolean ret;
+    gboolean test_iso8601;
+    gboolean test_tz;
+    gchar *iso8601;
+    gint32 offset;
+    gint32 dst_offset;
+    gint32 leap_seconds;
+} NwtimeTest;
+
+#define NWT_UNKNOWN    MM_NETWORK_TIMEZONE_LEAP_SECONDS_UNKNOWN
+
+static const NwtimeTest nwtime_tests[] = {
+    { "^NWTIME: 14/08/05,04:00:21+40,00", TRUE, TRUE, FALSE,
+        "2014-08-05T04:00:21+10:00", 600, 0, NWT_UNKNOWN },
+    { "^NWTIME: 14/08/05,04:00:21+40,00", TRUE, FALSE, TRUE,
+        "2014-08-05T04:00:21+10:00", 600, 0, NWT_UNKNOWN },
+    { "^NWTIME: 14/08/05,04:00:21+40,00", TRUE, TRUE, TRUE,
+        "2014-08-05T04:00:21+10:00", 600, 0, NWT_UNKNOWN },
+
+    { "^NWTIME: 14/08/05,04:00:21+20,00", TRUE, TRUE, FALSE,
+        "2014-08-05T04:00:21+05:00", 300, 0, NWT_UNKNOWN },
+    { "^NWTIME: 14/08/05,04:00:21+20,00", TRUE, FALSE, TRUE,
+        "2014-08-05T04:00:21+05:00", 300, 0, NWT_UNKNOWN },
+    { "^NWTIME: 14/08/05,04:00:21+20,00", TRUE, TRUE, TRUE,
+        "2014-08-05T04:00:21+05:00", 300, 0, NWT_UNKNOWN },
+
+    { "^NWTIME: 14/08/05,04:00:21+40,01", TRUE, TRUE, FALSE,
+        "2014-08-05T04:00:21+11:00", 600, 60, NWT_UNKNOWN },
+    { "^NWTIME: 14/08/05,04:00:21+40,01", TRUE, FALSE, TRUE,
+        "2014-08-05T04:00:21+11:00", 600, 60, NWT_UNKNOWN },
+    { "^NWTIME: 14/08/05,04:00:21+40,01", TRUE, TRUE, TRUE,
+        "2014-08-05T04:00:21+11:00", 600, 60, NWT_UNKNOWN },
+
+    { "^NWTIME: 14/08/05,04:00:21+40,02", TRUE, TRUE, FALSE,
+        "2014-08-05T04:00:21+12:00", 600, 120, NWT_UNKNOWN },
+    { "^NWTIME: 14/08/05,04:00:21+40,02", TRUE, FALSE, TRUE,
+        "2014-08-05T04:00:21+12:00", 600, 120, NWT_UNKNOWN },
+    { "^NWTIME: 14/08/05,04:00:21+40,02", TRUE, TRUE, TRUE,
+        "2014-08-05T04:00:21+12:00", 600, 120, NWT_UNKNOWN },
+
+    { "^TIME: XX/XX/XX,XX:XX:XX+XX,XX", FALSE, TRUE, FALSE,
+        NULL, NWT_UNKNOWN, NWT_UNKNOWN, NWT_UNKNOWN },
+
+    { "^TIME: 14/08/05,04:00:21+40,00", FALSE, TRUE, FALSE,
+        NULL, NWT_UNKNOWN, NWT_UNKNOWN, NWT_UNKNOWN },
+
+    { NULL, FALSE, FALSE, FALSE, NULL, NWT_UNKNOWN, NWT_UNKNOWN, NWT_UNKNOWN }
+};
+
+static void
+test_nwtime (void)
+{
+    guint i;
+
+    for (i = 0; nwtime_tests[i].str; i++) {
+        GError *error = NULL;
+        gchar *iso8601 = NULL;
+        MMNetworkTimezone *tz = NULL;
+        gboolean ret;
+
+        ret = mm_huawei_parse_nwtime_response (nwtime_tests[i].str,
+                                               nwtime_tests[i].test_iso8601 ? &iso8601 : NULL,
+                                               nwtime_tests[i].test_tz ? &tz : NULL,
+                                               &error);
+
+        g_assert (ret == nwtime_tests[i].ret);
+        g_assert (ret == (error ? FALSE : TRUE));
+
+        g_clear_error (&error);
+
+        if (nwtime_tests[i].test_iso8601)
+            g_assert_cmpstr (nwtime_tests[i].iso8601, ==, iso8601);
+
+        if (nwtime_tests[i].test_tz) {
+            g_assert (nwtime_tests[i].offset == mm_network_timezone_get_offset (tz));
+            g_assert (nwtime_tests[i].dst_offset == mm_network_timezone_get_dst_offset (tz));
+            g_assert (nwtime_tests[i].leap_seconds == mm_network_timezone_get_leap_seconds (tz));
+        }
+
+        g_free (iso8601);
+
+        if (tz)
+            g_object_unref (tz);
+    }
+}
+
+/*****************************************************************************/
+/* Test ^TIME responses */
+
+typedef struct {
+    const gchar *str;
+    gboolean ret;
+    gchar *iso8601;
+} TimeTest;
+
+static const TimeTest time_tests[] = {
+    { "^TIME: 14/08/05 04:00:21", TRUE, "2014-08-05T04:00:21" },
+    { "^TIME: 2014/08/05 04:00:21", TRUE, "2014-08-05T04:00:21" },
+    { "^TIME: 14-08-05 04:00:21", FALSE, NULL },
+    { "^TIME: 14-08-05,04:00:21", FALSE, NULL },
+    { "^TIME: 14/08/05 04:00:21 AEST", FALSE, NULL },
+    { NULL, FALSE, NULL }
+};
+
+static void
+test_time (void)
+{
+    guint i;
+
+    for (i = 0; time_tests[i].str; i++) {
+        GError *error = NULL;
+        gchar *iso8601 = NULL;
+        gboolean ret;
+
+        ret = mm_huawei_parse_time_response (time_tests[i].str,
+                                             &iso8601,
+                                             NULL,
+                                             &error);
+
+        g_assert (ret == time_tests[i].ret);
+        g_assert (ret == (error ? FALSE : TRUE));
+        g_clear_error (&error);
+
+        g_assert_cmpstr (time_tests[i].iso8601, ==, iso8601);
+        g_free (iso8601);
     }
 }
 
@@ -1031,6 +1221,7 @@ int main (int argc, char **argv)
     g_test_init (&argc, &argv, NULL);
 
     g_test_add_func ("/MM/huawei/ndisstatqry", test_ndisstatqry);
+    g_test_add_func ("/MM/huawei/dhcp", test_dhcp);
     g_test_add_func ("/MM/huawei/sysinfo", test_sysinfo);
     g_test_add_func ("/MM/huawei/sysinfoex", test_sysinfoex);
     g_test_add_func ("/MM/huawei/prefmode", test_prefmode);
@@ -1039,6 +1230,8 @@ int main (int argc, char **argv)
     g_test_add_func ("/MM/huawei/syscfg/response", test_syscfg_response);
     g_test_add_func ("/MM/huawei/syscfgex", test_syscfgex);
     g_test_add_func ("/MM/huawei/syscfgex/response", test_syscfgex_response);
+    g_test_add_func ("/MM/huawei/nwtime", test_nwtime);
+    g_test_add_func ("/MM/huawei/time", test_time);
 
     return g_test_run ();
 }

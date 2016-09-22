@@ -168,6 +168,9 @@ ATTRS{idVendor}=="19d2", ATTRS{idProduct}=="0126", ENV{.MM_USBIFNUM}=="01", ENV{
 ATTRS{idVendor}=="19d2", ATTRS{idProduct}=="0128", ENV{.MM_USBIFNUM}=="04", ENV{ID_MM_ZTE_PORT_TYPE_MODEM}="1"
 ATTRS{idVendor}=="19d2", ATTRS{idProduct}=="0128", ENV{.MM_USBIFNUM}=="01", ENV{ID_MM_ZTE_PORT_TYPE_AUX}="1"
 
+ATTRS{idVendor}=="19d2", ATTRS{idProduct}=="0156", ENV{.MM_USBIFNUM}=="02", ENV{ID_MM_ZTE_PORT_TYPE_MODEM}="1"
+ATTRS{idVendor}=="19d2", ATTRS{idProduct}=="0156", ENV{.MM_USBIFNUM}=="01", ENV{ID_MM_ZTE_PORT_TYPE_AUX}="1"
+
 ATTRS{idVendor}=="19d2", ATTRS{idProduct}=="1007", ENV{.MM_USBIFNUM}=="03", ENV{ID_MM_ZTE_PORT_TYPE_MODEM}="1"
 ATTRS{idVendor}=="19d2", ATTRS{idProduct}=="1007", ENV{.MM_USBIFNUM}=="01", ENV{ID_MM_ZTE_PORT_TYPE_AUX}="1"
 
@@ -191,5 +194,10 @@ ATTRS{idVendor}=="19d2", ATTRS{idProduct}=="2003", ENV{.MM_USBIFNUM}=="01", ENV{
 
 # Icera-based devices that use DHCP, not AT%IPDPADDR
 ATTRS{product}=="K3805-z", ENV{ID_MM_ZTE_ICERA_DHCP}="1"
+
+# MF60 exposes QMI, but it is unusable, fallback to AT+PPP
+ATTRS{idVendor}=="19d2", ATTRS{idProduct}=="1402", SUBSYSTEM=="usb", KERNEL=="cdc-wdm*", ENV{ID_MM_PORT_IGNORE}="1"
+ATTRS{idVendor}=="19d2", ATTRS{idProduct}=="1402", SUBSYSTEM=="usbmisc", KERNEL=="cdc-wdm*", ENV{ID_MM_PORT_IGNORE}="1"
+ATTRS{idVendor}=="19d2", ATTRS{idProduct}=="1402", SUBSYSTEM=="net", ENV{ID_MM_PORT_IGNORE}="1"
 
 LABEL="mm_zte_port_types_end"

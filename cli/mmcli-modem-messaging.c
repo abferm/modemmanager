@@ -4,7 +4,7 @@
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
+ * the Free Software Foundation, either version 2 of the License, or
  * (at your option) any later version.
  *
  * This program is distributed in the hope that it will be useful,
@@ -64,7 +64,7 @@ static GOptionEntry entries[] = {
       "Create a new SMS in a given modem",
       "[\"key=value,...\"]"
     },
-    { "messaging-create-sms-with-data", 0, 0, G_OPTION_ARG_STRING, &create_with_data_str,
+    { "messaging-create-sms-with-data", 0, 0, G_OPTION_ARG_FILENAME, &create_with_data_str,
       "Pass the given file as data contents when creating a new SMS",
       "[File path]"
     },
@@ -78,16 +78,16 @@ static GOptionEntry entries[] = {
 GOptionGroup *
 mmcli_modem_messaging_get_option_group (void)
 {
-	GOptionGroup *group;
+    GOptionGroup *group;
 
-	group = g_option_group_new ("messaging",
-	                            "Messaging options",
-	                            "Show Messaging options",
-	                            NULL,
-	                            NULL);
-	g_option_group_add_entries (group, entries);
+    group = g_option_group_new ("messaging",
+                                "Messaging options",
+                                "Show Messaging options",
+                                NULL,
+                                NULL);
+    g_option_group_add_entries (group, entries);
 
-	return group;
+    return group;
 }
 
 gboolean

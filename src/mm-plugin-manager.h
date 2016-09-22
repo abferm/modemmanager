@@ -31,6 +31,8 @@
 #define MM_IS_PLUGIN_MANAGER_CLASS(klass) (G_TYPE_CHECK_CLASS_TYPE ((obj), MM_TYPE_PLUGIN_MANAGER))
 #define MM_PLUGIN_MANAGER_GET_CLASS(obj)  (G_TYPE_INSTANCE_GET_CLASS ((obj), MM_TYPE_PLUGIN_MANAGER, MMPluginManagerClass))
 
+#define MM_PLUGIN_MANAGER_PLUGIN_DIR "plugin-dir" /* Construct-only */
+
 typedef struct _MMPluginManager MMPluginManager;
 typedef struct _MMPluginManagerClass MMPluginManagerClass;
 typedef struct _MMPluginManagerPrivate MMPluginManagerPrivate;
@@ -44,18 +46,19 @@ struct _MMPluginManagerClass {
     GObjectClass parent;
 };
 
-GType mm_plugin_manager_get_type (void);
-
-MMPluginManager *mm_plugin_manager_new (GError **error);
-
-/* Asynchronous operation to find the best plugin giving support to a
- * given device. */
-void     mm_plugin_manager_find_device_support        (MMPluginManager *self,
-                                                       MMDevice *device,
-                                                       GAsyncReadyCallback callback,
-                                                       gpointer user_data);
-gboolean mm_plugin_manager_find_device_support_finish (MMPluginManager *self,
-                                                       GAsyncResult *result,
-                                                       GError **error);
+GType            mm_plugin_manager_get_type (void);
+MMPluginManager *mm_plugin_manager_new                         (const gchar          *plugindir,
+                                                                GError              **error);
+void             mm_plugin_manager_device_support_check        (MMPluginManager      *self,
+                                                                MMDevice             *device,
+                                                                GAsyncReadyCallback   callback,
+                                                                gpointer              user_data);
+gboolean         mm_plugin_manager_device_support_check_cancel (MMPluginManager      *self,
+                                                                MMDevice             *device);
+MMPlugin *       mm_plugin_manager_device_support_check_finish (MMPluginManager      *self,
+                                                                GAsyncResult         *res,
+                                                                GError              **error);
+MMPlugin        *mm_plugin_manager_peek_plugin                 (MMPluginManager      *self,
+                                                                const gchar          *plugin_name);
 
 #endif /* MM_PLUGIN_MANAGER_H */

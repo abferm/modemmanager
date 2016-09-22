@@ -292,7 +292,7 @@ mm_common_get_capabilities_from_string (const gchar *str,
     GError *inner_error = NULL;
     MMModemCapability capabilities;
     gchar **capability_strings;
-	GFlagsClass *flags_class;
+    GFlagsClass *flags_class;
 
     capabilities = MM_MODEM_CAPABILITY_NONE;
 
@@ -342,7 +342,7 @@ mm_common_get_modes_from_string (const gchar *str,
     GError *inner_error = NULL;
     MMModemMode modes;
     gchar **mode_strings;
-	GFlagsClass *flags_class;
+    GFlagsClass *flags_class;
 
     modes = MM_MODEM_MODE_NONE;
 
@@ -491,7 +491,7 @@ mm_common_get_bands_from_string (const gchar *str,
     GError *inner_error = NULL;
     GArray *array;
     gchar **band_strings;
-	GEnumClass *enum_class;
+    GEnumClass *enum_class;
 
     array = g_array_new (FALSE, FALSE, sizeof (MMModemBand));
 
@@ -832,12 +832,13 @@ mm_common_get_boolean_from_string (const gchar *value,
     if (!g_ascii_strcasecmp (value, "true") || g_str_equal (value, "1"))
         return TRUE;
 
-    if (g_ascii_strcasecmp (value, "false") && g_str_equal (value, "0"))
-        g_set_error (error,
-                     MM_CORE_ERROR,
-                     MM_CORE_ERROR_INVALID_ARGS,
-                     "Cannot get boolean from string '%s'", value);
+    if (!g_ascii_strcasecmp (value, "false") || g_str_equal (value, "0"))
+        return FALSE;
 
+    g_set_error (error,
+                 MM_CORE_ERROR,
+                 MM_CORE_ERROR_INVALID_ARGS,
+                 "Cannot get boolean from string '%s'", value);
     return FALSE;
 }
 
@@ -845,7 +846,7 @@ MMModemCdmaRmProtocol
 mm_common_get_rm_protocol_from_string (const gchar *str,
                                        GError **error)
 {
-	GEnumClass *enum_class;
+    GEnumClass *enum_class;
     guint i;
 
     enum_class = G_ENUM_CLASS (g_type_class_ref (MM_TYPE_MODEM_CDMA_RM_PROTOCOL));
@@ -892,7 +893,7 @@ mm_common_get_allowed_auth_from_string (const gchar *str,
     GError *inner_error = NULL;
     MMBearerAllowedAuth allowed_auth;
     gchar **strings;
-	GFlagsClass *flags_class;
+    GFlagsClass *flags_class;
 
     allowed_auth = MM_BEARER_ALLOWED_AUTH_UNKNOWN;
 
@@ -939,7 +940,7 @@ MMSmsStorage
 mm_common_get_sms_storage_from_string (const gchar *str,
                                        GError **error)
 {
-	GEnumClass *enum_class;
+    GEnumClass *enum_class;
     guint i;
 
     enum_class = G_ENUM_CLASS (g_type_class_ref (MM_TYPE_SMS_STORAGE));
@@ -961,7 +962,7 @@ MMSmsCdmaTeleserviceId
 mm_common_get_sms_cdma_teleservice_id_from_string (const gchar *str,
                                                    GError **error)
 {
-	GEnumClass *enum_class;
+    GEnumClass *enum_class;
     guint i;
 
     enum_class = G_ENUM_CLASS (g_type_class_ref (MM_TYPE_SMS_CDMA_TELESERVICE_ID));
@@ -983,7 +984,7 @@ MMSmsCdmaServiceCategory
 mm_common_get_sms_cdma_service_category_from_string (const gchar *str,
                                                      GError **error)
 {
-	GEnumClass *enum_class;
+    GEnumClass *enum_class;
     guint i;
 
     enum_class = G_ENUM_CLASS (g_type_class_ref (MM_TYPE_SMS_CDMA_SERVICE_CATEGORY));
@@ -1001,6 +1002,72 @@ mm_common_get_sms_cdma_service_category_from_string (const gchar *str,
     return MM_SMS_CDMA_SERVICE_CATEGORY_UNKNOWN;
 }
 
+MMCallDirection
+mm_common_get_call_direction_from_string (const gchar *str,
+                                          GError **error)
+{
+    GEnumClass *enum_class;
+    guint i;
+
+    enum_class = G_ENUM_CLASS (g_type_class_ref (MM_TYPE_CALL_DIRECTION));
+
+    for (i = 0; enum_class->values[i].value_nick; i++) {
+        if (!g_ascii_strcasecmp (str, enum_class->values[i].value_nick))
+            return enum_class->values[i].value;
+    }
+
+    g_set_error (error,
+                 MM_CORE_ERROR,
+                 MM_CORE_ERROR_INVALID_ARGS,
+                 "Couldn't match '%s' with a valid MMCallDirection value",
+                 str);
+    return MM_CALL_DIRECTION_UNKNOWN;
+}
+
+MMCallState
+mm_common_get_call_state_from_string (const gchar *str,
+                                      GError **error)
+{
+    GEnumClass *enum_class;
+    guint i;
+
+    enum_class = G_ENUM_CLASS (g_type_class_ref (MM_TYPE_CALL_STATE));
+
+    for (i = 0; enum_class->values[i].value_nick; i++) {
+        if (!g_ascii_strcasecmp (str, enum_class->values[i].value_nick))
+            return enum_class->values[i].value;
+    }
+
+    g_set_error (error,
+                 MM_CORE_ERROR,
+                 MM_CORE_ERROR_INVALID_ARGS,
+                 "Couldn't match '%s' with a valid MMCallState value",
+                 str);
+    return MM_CALL_STATE_UNKNOWN;
+}
+
+MMCallStateReason
+mm_common_get_call_state_reason_from_string (const gchar *str,
+                                             GError **error)
+{
+    GEnumClass *enum_class;
+    guint i;
+
+    enum_class = G_ENUM_CLASS (g_type_class_ref (MM_TYPE_CALL_STATE_REASON));
+
+    for (i = 0; enum_class->values[i].value_nick; i++) {
+        if (!g_ascii_strcasecmp (str, enum_class->values[i].value_nick))
+            return enum_class->values[i].value;
+    }
+
+    g_set_error (error,
+                 MM_CORE_ERROR,
+                 MM_CORE_ERROR_INVALID_ARGS,
+                 "Couldn't match '%s' with a valid MMCallStateReason value",
+                 str);
+    return MM_CALL_STATE_REASON_UNKNOWN;
+}
+
 MMOmaFeature
 mm_common_get_oma_features_from_string (const gchar *str,
                                         GError **error)
@@ -1008,7 +1075,7 @@ mm_common_get_oma_features_from_string (const gchar *str,
     GError *inner_error = NULL;
     MMOmaFeature features;
     gchar **feature_strings;
-	GFlagsClass *flags_class;
+    GFlagsClass *flags_class;
 
     features = MM_OMA_FEATURE_NONE;
 
@@ -1055,7 +1122,7 @@ MMOmaSessionType
 mm_common_get_oma_session_type_from_string (const gchar *str,
                                             GError **error)
 {
-	GEnumClass *enum_class;
+    GEnumClass *enum_class;
     guint i;
 
     enum_class = G_ENUM_CLASS (g_type_class_ref (MM_TYPE_OMA_SESSION_TYPE));
@@ -1254,7 +1321,7 @@ mm_get_int_from_str (const gchar *str,
         return FALSE;
 
     for (num = 0; str[num]; num++) {
-        if (str[num] != '-' && !g_ascii_isdigit (str[num]))
+        if (str[num] != '+' && str[num] != '-' && !g_ascii_isdigit (str[num]))
             return FALSE;
     }
 
@@ -1459,56 +1526,56 @@ mm_sms_delivery_state_get_string_extended (guint delivery_state)
 static gint
 hex2num (gchar c)
 {
-	if (c >= '0' && c <= '9')
-		return c - '0';
-	if (c >= 'a' && c <= 'f')
-		return c - 'a' + 10;
-	if (c >= 'A' && c <= 'F')
-		return c - 'A' + 10;
-	return -1;
+    if (c >= '0' && c <= '9')
+        return c - '0';
+    if (c >= 'a' && c <= 'f')
+        return c - 'a' + 10;
+    if (c >= 'A' && c <= 'F')
+        return c - 'A' + 10;
+    return -1;
 }
 
 gint
 mm_utils_hex2byte (const gchar *hex)
 {
-	gint a, b;
+    gint a, b;
 
-	a = hex2num (*hex++);
-	if (a < 0)
-		return -1;
-	b = hex2num (*hex++);
-	if (b < 0)
-		return -1;
-	return (a << 4) | b;
+    a = hex2num (*hex++);
+    if (a < 0)
+        return -1;
+    b = hex2num (*hex++);
+    if (b < 0)
+        return -1;
+    return (a << 4) | b;
 }
 
 gchar *
 mm_utils_hexstr2bin (const gchar *hex, gsize *out_len)
 {
-	const gchar *ipos = hex;
-	gchar *buf = NULL;
-	gsize i;
-	gint a;
-	gchar *opos;
+    const gchar *ipos = hex;
+    gchar *buf = NULL;
+    gsize i;
+    gint a;
+    gchar *opos;
     gsize len;
 
     len = strlen (hex);
 
-	/* Length must be a multiple of 2 */
+    /* Length must be a multiple of 2 */
     g_return_val_if_fail ((len % 2) == 0, NULL);
 
-	opos = buf = g_malloc0 ((len / 2) + 1);
-	for (i = 0; i < len; i += 2) {
-		a = mm_utils_hex2byte (ipos);
-		if (a < 0) {
-			g_free (buf);
-			return NULL;
-		}
-		*opos++ = a;
-		ipos += 2;
-	}
+    opos = buf = g_malloc0 ((len / 2) + 1);
+    for (i = 0; i < len; i += 2) {
+        a = mm_utils_hex2byte (ipos);
+        if (a < 0) {
+            g_free (buf);
+            return NULL;
+        }
+        *opos++ = a;
+        ipos += 2;
+    }
     *out_len = len / 2;
-	return buf;
+    return buf;
 }
 
 /* End from hostap */

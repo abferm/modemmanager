@@ -25,7 +25,7 @@
 
 #include "mm-private-boxed-types.h"
 #include "mm-port-probe-at.h"
-#include "mm-at-serial-port.h"
+#include "mm-port-serial-at.h"
 #include "mm-device.h"
 
 #define MM_TYPE_PORT_PROBE            (mm_port_probe_get_type ())
@@ -68,7 +68,7 @@ struct _MMPortProbeClass {
  * It also helps to implement plugin-specific checks, as plugins can set
  * their own probing results on the 'probe' object. */
 typedef void     (* MMPortProbeAtCustomInit)       (MMPortProbe *probe,
-                                                    MMAtSerialPort *port,
+                                                    MMPortSerialAt *port,
                                                     GCancellable *cancellable,
                                                     GAsyncReadyCallback callback,
                                                     gpointer user_data);
@@ -87,6 +87,7 @@ GUdevDevice *mm_port_probe_peek_port        (MMPortProbe *self);
 GUdevDevice *mm_port_probe_get_port         (MMPortProbe *self);
 const gchar *mm_port_probe_get_port_name    (MMPortProbe *self);
 const gchar *mm_port_probe_get_port_subsys  (MMPortProbe *self);
+const gchar *mm_port_probe_get_parent_path  (MMPortProbe *self);
 
 /* Probing result setters */
 void mm_port_probe_set_result_at         (MMPortProbe *self,
@@ -112,12 +113,12 @@ void     mm_port_probe_run        (MMPortProbe *self,
                                    gboolean at_send_lf,
                                    const MMPortProbeAtCommand *at_custom_probe,
                                    const MMAsyncMethod *at_custom_init,
+                                   GCancellable *cancellable,
                                    GAsyncReadyCallback callback,
                                    gpointer user_data);
 gboolean mm_port_probe_run_finish (MMPortProbe *self,
                                    GAsyncResult *result,
                                    GError **error);
-gboolean mm_port_probe_run_cancel (MMPortProbe *self);
 
 gboolean mm_port_probe_run_cancel_at_probing (MMPortProbe *self);
 
@@ -130,6 +131,7 @@ gboolean      mm_port_probe_is_mbim          (MMPortProbe *self);
 const gchar  *mm_port_probe_get_vendor       (MMPortProbe *self);
 const gchar  *mm_port_probe_get_product      (MMPortProbe *self);
 gboolean      mm_port_probe_is_icera         (MMPortProbe *self);
+gboolean      mm_port_probe_is_ignored       (MMPortProbe *self);
 
 /* Additional helpers */
 gboolean mm_port_probe_list_has_at_port   (GList *list);

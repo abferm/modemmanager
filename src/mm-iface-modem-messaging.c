@@ -88,7 +88,7 @@ mm_iface_modem_messaging_bind_simple_status (MMIfaceModemMessaging *self,
 
 /*****************************************************************************/
 
-MMSms *
+MMBaseSms *
 mm_iface_modem_messaging_create_sms (MMIfaceModemMessaging *self)
 {
     g_assert (MM_IFACE_MODEM_MESSAGING_GET_INTERFACE (self)->create_sms != NULL);
@@ -271,7 +271,7 @@ handle_create_auth_ready (MMBaseModem *self,
     MMSmsList *list = NULL;
     GError *error = NULL;
     MMSmsProperties *properties;
-    MMSms *sms;
+    MMBaseSms *sms;
 
     if (!mm_base_modem_authorize_finish (self, res, &error)) {
         g_dbus_method_invocation_take_error (ctx->invocation, error);
@@ -300,9 +300,9 @@ handle_create_auth_ready (MMBaseModem *self,
         return;
     }
 
-    sms = mm_sms_new_from_properties (MM_BASE_MODEM (self),
-                                      properties,
-                                      &error);
+    sms = mm_base_sms_new_from_properties (MM_BASE_MODEM (self),
+                                           properties,
+                                           &error);
     if (!sms) {
         g_object_unref (properties);
         g_dbus_method_invocation_take_error (ctx->invocation, error);
@@ -330,7 +330,7 @@ handle_create_auth_ready (MMBaseModem *self,
     /* Complete the DBus call */
     mm_gdbus_modem_messaging_complete_create (ctx->skeleton,
                                               ctx->invocation,
-                                              mm_sms_get_path (sms));
+                                              mm_base_sms_get_path (sms));
     g_object_unref (sms);
 
     g_object_unref (properties);
@@ -808,10 +808,12 @@ load_initial_sms_parts_from_storages (EnablingContext *ctx)
 
     if (!storage_ctx->supported_mem1 || ctx->mem1_storage_index >= storage_ctx->supported_mem1->len)
         all_loaded = TRUE;
-    /* We'll skip the 'MT' storage, as that is a combination of 'SM' and 'ME' */
-    else if (g_array_index (storage_ctx->supported_mem1,
-                            MMSmsStorage,
-                            ctx->mem1_storage_index) == MM_SMS_STORAGE_MT) {
+    /* We'll skip the 'MT' storage, as that is a combination of 'SM' and 'ME'; but only if
+     * this is not the only one in the list. */
+    else if ((g_array_index (storage_ctx->supported_mem1,
+                             MMSmsStorage,
+                             ctx->mem1_storage_index) == MM_SMS_STORAGE_MT) &&
+             (storage_ctx->supported_mem1->len > 1)) {
         ctx->mem1_storage_index++;
         if (ctx->mem1_storage_index >= storage_ctx->supported_mem1->len)
             all_loaded = TRUE;
@@ -1055,6 +1057,7 @@ typedef enum {
     INITIALIZATION_STEP_CHECK_SUPPORT,
     INITIALIZATION_STEP_FAIL_IF_UNSUPPORTED,
     INITIALIZATION_STEP_LOAD_SUPPORTED_STORAGES,
+    INITIALIZATION_STEP_INIT_CURRENT_STORAGES,
     INITIALIZATION_STEP_LAST
 } InitializationStep;
 
@@ -1211,6 +1214,30 @@ check_support_ready (MMIfaceModemMessaging *self,
 }
 
 static void
+init_current_storages_ready (MMIfaceModemMessaging *self,
+                             GAsyncResult *res,
+                             InitializationContext *ctx)
+{
+    StorageContext *storage_ctx;
+    GError *error = NULL;
+
+    storage_ctx = get_storage_context (self);
+    if (!MM_IFACE_MODEM_MESSAGING_GET_INTERFACE (self)->init_current_storages_finish (
+            self,
+            res,
+            &error)) {
+        mm_dbg ("Couldn't initialize current storages: '%s'", error->message);
+        g_error_free (error);
+    } else {
+        mm_dbg ("Current storages initialized");
+    }
+
+    /* Go on to next step */
+    ctx->step++;
+    interface_initialization_step (ctx);
+}
+
+static void
 interface_initialization_step (InitializationContext *ctx)
 {
     /* Don't run new steps if we're cancelled */
@@ -1276,6 +1303,18 @@ interface_initialization_step (InitializationContext *ctx)
             MM_IFACE_MODEM_MESSAGING_GET_INTERFACE (ctx->self)->load_supported_storages (
                 ctx->self,
                 (GAsyncReadyCallback)load_supported_storages_ready,
+                ctx);
+            return;
+        }
+        /* Fall down to next step */
+        ctx->step++;
+
+    case INITIALIZATION_STEP_INIT_CURRENT_STORAGES:
+        if (MM_IFACE_MODEM_MESSAGING_GET_INTERFACE (ctx->self)->init_current_storages &&
+            MM_IFACE_MODEM_MESSAGING_GET_INTERFACE (ctx->self)->init_current_storages_finish) {
+            MM_IFACE_MODEM_MESSAGING_GET_INTERFACE (ctx->self)->init_current_storages (
+                ctx->self,
+                (GAsyncReadyCallback)init_current_storages_ready,
                 ctx);
             return;
         }

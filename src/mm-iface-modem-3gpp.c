@@ -130,22 +130,32 @@ get_consolidated_reg_state (RegistrationStateContext *ctx)
     if (ctx->cs == MM_MODEM_3GPP_REGISTRATION_STATE_HOME ||
         ctx->cs == MM_MODEM_3GPP_REGISTRATION_STATE_ROAMING)
         return ctx->cs;
-
     if (ctx->ps == MM_MODEM_3GPP_REGISTRATION_STATE_HOME ||
         ctx->ps == MM_MODEM_3GPP_REGISTRATION_STATE_ROAMING)
         return ctx->ps;
-
     if (ctx->eps == MM_MODEM_3GPP_REGISTRATION_STATE_HOME ||
         ctx->eps == MM_MODEM_3GPP_REGISTRATION_STATE_ROAMING)
         return ctx->eps;
 
     if (ctx->cs == MM_MODEM_3GPP_REGISTRATION_STATE_SEARCHING)
         return ctx->cs;
-
     if (ctx->ps == MM_MODEM_3GPP_REGISTRATION_STATE_SEARCHING)
         return ctx->ps;
-
     if (ctx->eps == MM_MODEM_3GPP_REGISTRATION_STATE_SEARCHING)
+        return ctx->eps;
+
+    /* If one state is DENIED and the others are UNKNOWN, use DENIED */
+    if (ctx->cs == MM_MODEM_3GPP_REGISTRATION_STATE_DENIED &&
+        ctx->ps == MM_MODEM_3GPP_REGISTRATION_STATE_UNKNOWN &&
+        ctx->eps == MM_MODEM_3GPP_REGISTRATION_STATE_UNKNOWN)
+        return ctx->cs;
+    if (ctx->cs == MM_MODEM_3GPP_REGISTRATION_STATE_UNKNOWN &&
+        ctx->ps == MM_MODEM_3GPP_REGISTRATION_STATE_DENIED &&
+        ctx->eps == MM_MODEM_3GPP_REGISTRATION_STATE_UNKNOWN)
+        return ctx->ps;
+    if (ctx->cs == MM_MODEM_3GPP_REGISTRATION_STATE_UNKNOWN &&
+        ctx->ps == MM_MODEM_3GPP_REGISTRATION_STATE_UNKNOWN &&
+        ctx->eps == MM_MODEM_3GPP_REGISTRATION_STATE_DENIED)
         return ctx->eps;
 
     return ctx->cs;
@@ -223,7 +233,7 @@ run_registration_checks_again (RegisterInNetworkContext *ctx)
         ctx->self,
         (GAsyncReadyCallback)run_registration_checks_ready,
         ctx);
-    return FALSE;
+    return G_SOURCE_REMOVE;
 }
 
 static void
@@ -260,6 +270,8 @@ run_registration_checks_ready (MMIfaceModem3gpp *self,
     /* If we got registered, end registration checks */
     if (current_registration_state == MM_MODEM_3GPP_REGISTRATION_STATE_HOME ||
         current_registration_state == MM_MODEM_3GPP_REGISTRATION_STATE_ROAMING) {
+        /* Request immediate access tech update */
+        mm_iface_modem_refresh_access_technologies (MM_IFACE_MODEM (ctx->self));
         mm_dbg ("Modem is currently registered in a 3GPP network");
         g_simple_async_result_set_op_res_gboolean (ctx->result, TRUE);
         register_in_network_context_complete_and_free (ctx);
@@ -1040,6 +1052,10 @@ mm_iface_modem_3gpp_update_location (MMIfaceModem3gpp *self,
                                      gulong cell_id)
 {
     MMModem3gppRegistrationState state;
+    RegistrationStateContext *ctx;
+
+    ctx = get_registration_state_context (self);
+    g_assert (ctx);
 
     if (!MM_IS_IFACE_MODEM_LOCATION (self))
         return;
@@ -1049,8 +1065,11 @@ mm_iface_modem_3gpp_update_location (MMIfaceModem3gpp *self,
                   NULL);
 
     /* Even if registration state didn't change, report access technology or
-     * location updates, but only if something valid to report */
-    if (state == MM_MODEM_3GPP_REGISTRATION_STATE_HOME ||
+     * location updates, but only if something valid to report. For the case
+     * where we're registering (loading current registration info after a state
+     * change to registered), we also allow LAC/CID updates. */
+    if (ctx->reloading_registration_info ||
+        state == MM_MODEM_3GPP_REGISTRATION_STATE_HOME ||
         state == MM_MODEM_3GPP_REGISTRATION_STATE_ROAMING) {
         if (location_area_code > 0 && cell_id > 0)
             mm_iface_modem_location_3gpp_update_lac_ci (MM_IFACE_MODEM_LOCATION (self),
@@ -1290,7 +1309,7 @@ periodic_registration_check (MMIfaceModem3gpp *self)
             (GAsyncReadyCallback)periodic_registration_checks_ready,
             NULL);
     }
-    return TRUE;
+    return G_SOURCE_CONTINUE;
 }
 
 static void
@@ -1539,7 +1558,6 @@ typedef enum {
     ENABLING_STEP_ENABLE_UNSOLICITED_EVENTS,
     ENABLING_STEP_SETUP_UNSOLICITED_REGISTRATION_EVENTS,
     ENABLING_STEP_ENABLE_UNSOLICITED_REGISTRATION_EVENTS,
-    ENABLING_STEP_RUN_REGISTRATION_CHECKS,
     ENABLING_STEP_LAST
 } EnablingStep;
 
@@ -1678,25 +1696,6 @@ enable_unsolicited_registration_events_ready (MMIfaceModem3gpp *self,
 }
 
 static void
-run_all_registration_checks_ready (MMIfaceModem3gpp *self,
-                                   GAsyncResult *res,
-                                   EnablingContext *ctx)
-{
-    GError *error = NULL;
-
-    mm_iface_modem_3gpp_run_registration_checks_finish (self, res, &error);
-    if (error) {
-        g_simple_async_result_take_error (ctx->result, error);
-        enabling_context_complete_and_free (ctx);
-        return;
-    }
-
-    /* Go on to next step */
-    ctx->step++;
-    interface_enabling_step (ctx);
-}
-
-static void
 interface_enabling_step (EnablingContext *ctx)
 {
     /* Don't run new steps if we're cancelled */
@@ -1769,13 +1768,6 @@ interface_enabling_step (EnablingContext *ctx)
         /* Fall down to next step */
         ctx->step++;
     }
-
-    case ENABLING_STEP_RUN_REGISTRATION_CHECKS:
-        mm_iface_modem_3gpp_run_registration_checks (
-            ctx->self,
-            (GAsyncReadyCallback)run_all_registration_checks_ready,
-            ctx);
-        return;
 
     case ENABLING_STEP_LAST:
         /* We are done without errors! */
@@ -1864,7 +1856,7 @@ initialization_context_complete_and_free_if_cancelled (InitializationContext *ct
 }
 
 static void
-sim_pin_lock_enabled_cb (MMSim *self,
+sim_pin_lock_enabled_cb (MMBaseSim *self,
                          gboolean enabled,
                          MmGdbusModem3gpp *skeleton)
 {
@@ -1894,7 +1886,7 @@ load_enabled_facility_locks_ready (MMIfaceModem3gpp *self,
         mm_warn ("couldn't load facility locks: '%s'", error->message);
         g_error_free (error);
     } else {
-        MMSim *sim = NULL;
+        MMBaseSim *sim = NULL;
 
         /* We loaded the initial list of facility locks; but we do need to update
          * the SIM PIN lock status when that changes. We'll connect to the signal
@@ -1904,7 +1896,7 @@ load_enabled_facility_locks_ready (MMIfaceModem3gpp *self,
                       MM_IFACE_MODEM_SIM, &sim,
                       NULL);
         g_signal_connect (sim,
-                          MM_SIM_PIN_LOCK_ENABLED,
+                          MM_BASE_SIM_PIN_LOCK_ENABLED,
                           G_CALLBACK (sim_pin_lock_enabled_cb),
                           ctx->skeleton);
         g_object_unref (sim);
